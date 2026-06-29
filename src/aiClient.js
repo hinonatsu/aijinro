@@ -67,7 +67,7 @@ export async function generateAIMessage(input) {
 }
 
 async function safeAIText(text) {
-  const candidate = clampChars(text.replace(/^[-・*]\s*/gm, ""), 60);
+  const candidate = clampChars(text.replace(/^[-・*]\s*/gm, ""), 20);
   const moderation = await moderateMessage(candidate);
   if (moderation.allowed && candidate) {
     return candidate;

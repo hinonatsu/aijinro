@@ -41,6 +41,7 @@ export const Team = Object.freeze({
 
 const TURN_MS = 20_000;
 const VOTE_MS = 15_000;
+const MESSAGE_LIMIT = 20;
 
 const DISPLAY_NAMES = [
   "みかん",
@@ -214,12 +215,8 @@ export async function submitAction(guestToken, roomId, payload) {
     if (payload.actionType !== "ROUND_1_ANSWER") {
       throw publicError("現在は共通お題への回答ターンです。");
     }
-    await submitTurnText(room, participant, payload.text, {
-      round: 1,
-      targetParticipantId: null
-    });
-    advanceRound1(room);
-    return { ok: true };
+    saveTurnDraft(room, participant, payload);
+    return { ok: true, saved: true, sendsAt: toIso(room.phaseEndsAt) };
   }
 
   if (room.status === RoomStatus.ROUND_2) {
@@ -232,31 +229,16 @@ export async function submitAction(guestToken, roomId, payload) {
       if (target.id === participant.id) {
         throw publicError("自分自身には質問できません。");
       }
-      await submitTurnText(room, participant, payload.text, {
-        round: 2,
-        targetParticipantId: target.id
-      });
-      room.currentQuestion = {
-        askerId: participant.id,
-        targetParticipantId: target.id,
-        text: stripControlChars(payload.text)
-      };
-      setTurn(room, target.id, "DIRECTED_ANSWER");
-      return { ok: true };
+      saveTurnDraft(room, participant, payload);
+      return { ok: true, saved: true, sendsAt: toIso(room.phaseEndsAt) };
     }
 
     if (room.turnType === "DIRECTED_ANSWER") {
       if (payload.actionType !== "DIRECTED_ANSWER") {
         throw publicError("回答を送ってください。");
       }
-      await submitTurnText(room, participant, payload.text, {
-        round: 2,
-        targetParticipantId: room.currentQuestion?.askerId ?? null
-      });
-      room.currentQuestion = null;
-      room.round2Index += 1;
-      startRound2Question(room);
-      return { ok: true };
+      saveTurnDraft(room, participant, payload);
+      return { ok: true, saved: true, sendsAt: toIso(room.phaseEndsAt) };
     }
   }
 
@@ -269,16 +251,8 @@ export async function submitAction(guestToken, roomId, payload) {
     if (target.id === participant.id) {
       throw publicError("自分自身は選べません。");
     }
-    const reason = stripControlChars(payload.text);
-    const finalText = `AIだと思う人：${target.displayName}\n理由：${reason}`;
-    await submitTurnText(room, participant, finalText, {
-      round: 3,
-      targetParticipantId: target.id
-    });
-    participant.finalSuspectId = target.id;
-    room.round3Index += 1;
-    advanceRound3(room);
-    return { ok: true };
+    saveTurnDraft(room, participant, payload);
+    return { ok: true, saved: true, sendsAt: toIso(room.phaseEndsAt) };
   }
 
   throw publicError("現在は発言できません。");
@@ -534,17 +508,21 @@ function setTurn(room, participantId, turnType) {
   room.currentTurnParticipantId = participantId;
   room.turnType = turnType;
   room.phaseEndsAt = Date.now() + TURN_MS;
+  room.currentDraft = createEmptyDraft(room, participantId, turnType);
 
   const timeout = setTimeout(() => {
     const currentRoom = store.rooms.get(room.id);
     if (!currentRoom || currentRoom.currentTurnParticipantId !== participantId) {
       return;
     }
-    const participant = currentRoom.participants.find((item) => item.id === participantId);
-    addSystemMessage(currentRoom, `${participant.displayName} は時間切れにより、このターンを消費しました。`);
-    consumeCurrentTurn(currentRoom);
-    emitChange();
-  }, TURN_MS + 25);
+    finalizeCurrentTurn(currentRoom).catch((error) => {
+      const participant = currentRoom.participants.find((item) => item.id === participantId);
+      addSystemMessage(currentRoom, `${participant.displayName} の送信処理でエラーが発生しました。`);
+      addSystemMessage(currentRoom, error.message);
+      consumeCurrentTurn(currentRoom);
+      emitChange();
+    });
+  }, TURN_MS);
   registerRoomTimer(room, timeout);
 
   const participant = room.participants.find((item) => item.id === participantId);
@@ -554,7 +532,6 @@ function setTurn(room, participantId, turnType) {
         const currentRoom = store.rooms.get(room.id);
         if (currentRoom && currentRoom.status !== RoomStatus.CLOSED) {
           addSystemMessage(currentRoom, `AI発言生成に失敗しました: ${error.message}`);
-          consumeCurrentTurn(currentRoom);
           emitChange();
         }
       });
@@ -598,16 +575,11 @@ async function performAITurn(roomId) {
 
   if (room.status === RoomStatus.ROUND_2 && room.turnType === "DIRECTED_QUESTION") {
     const target = chooseValidAITarget(room, aiParticipant, output.targetParticipantId);
-    await submitAITurnText(room, aiParticipant, output.text, {
-      round: 2,
+    saveTurnDraft(room, aiParticipant, {
+      actionType: "DIRECTED_QUESTION",
+      text: output.text,
       targetParticipantId: target.id
     });
-    room.currentQuestion = {
-      askerId: aiParticipant.id,
-      targetParticipantId: target.id,
-      text: output.text
-    };
-    setTurn(room, target.id, "DIRECTED_ANSWER");
     return;
   }
 
@@ -617,48 +589,175 @@ async function performAITurn(roomId) {
       output.text.includes("理由：")
         ? output.text.split("理由：").at(-1).trim()
         : "答えが少し整いすぎて見えた";
-    const text = clampChars(`AIだと思う人：${target.displayName}\n理由：${reason}`, 60);
-    await submitAITurnText(room, aiParticipant, text, {
-      round: 3,
+    saveTurnDraft(room, aiParticipant, {
+      actionType: "FINAL_SUSPICION",
+      text: reason,
       targetParticipantId: target.id
     });
-    aiParticipant.finalSuspectId = target.id;
-    room.round3Index += 1;
-    advanceRound3(room);
     return;
   }
 
-  await submitAITurnText(room, aiParticipant, output.text, {
-    round: room.round,
+  saveTurnDraft(room, aiParticipant, {
+    actionType: room.turnType === "DIRECTED_ANSWER" ? "DIRECTED_ANSWER" : "ROUND_1_ANSWER",
+    text: output.text,
     targetParticipantId: room.currentQuestion?.askerId ?? null
   });
-  consumeCurrentTurn(room);
 }
 
-async function submitTurnText(room, participant, rawText, options) {
-  const text = normalizeAndValidateText(rawText);
+function createEmptyDraft(room, participantId, turnType) {
+  const participant = participantById(room, participantId);
+  const target = chooseValidAITarget(room, participant, null);
+  return {
+    participantId,
+    turnType,
+    actionType: actionTypeForTurn(room, turnType),
+    text: "",
+    targetParticipantId: target?.id ?? null,
+    updatedAt: Date.now()
+  };
+}
+
+function actionTypeForTurn(room, turnType) {
+  if (turnType === "COMMON_ANSWER") {
+    return "ROUND_1_ANSWER";
+  }
+  if (turnType === "DIRECTED_QUESTION") {
+    return "DIRECTED_QUESTION";
+  }
+  if (turnType === "DIRECTED_ANSWER") {
+    return "DIRECTED_ANSWER";
+  }
+  if (turnType === "FINAL_SUSPICION") {
+    return "FINAL_SUSPICION";
+  }
+  return room.status;
+}
+
+function saveTurnDraft(room, participant, payload) {
+  assertCurrentTurn(room, participant);
+  const text = participant.isAI
+    ? clampChars(stripControlChars(payload.text ?? ""), MESSAGE_LIMIT)
+    : normalizeDraftText(payload.text ?? "");
+  const expectedActionType = actionTypeForTurn(room, room.turnType);
+  if (payload.actionType !== expectedActionType) {
+    throw publicError("現在のターンと下書き種別が一致しません。");
+  }
+
+  let targetParticipantId = null;
+  if (["DIRECTED_QUESTION", "FINAL_SUSPICION"].includes(payload.actionType)) {
+    const target = assertTarget(room, payload.targetParticipantId);
+    if (target.id === participant.id) {
+      throw publicError("自分自身は選べません。");
+    }
+    targetParticipantId = target.id;
+  } else if (payload.actionType === "DIRECTED_ANSWER") {
+    targetParticipantId = room.currentQuestion?.askerId ?? null;
+  }
+
+  room.currentDraft = {
+    participantId: participant.id,
+    turnType: room.turnType,
+    actionType: payload.actionType,
+    text,
+    targetParticipantId,
+    updatedAt: Date.now()
+  };
+}
+
+async function finalizeCurrentTurn(room) {
+  const participant = participantById(room, room.currentTurnParticipantId);
+  const draft = room.currentDraft?.participantId === participant?.id
+    ? room.currentDraft
+    : createEmptyDraft(room, room.currentTurnParticipantId, room.turnType);
+
+  if (room.status === RoomStatus.ROUND_1) {
+    await publishDraft(room, participant, draft, {
+      round: 1,
+      targetParticipantId: null
+    });
+    advanceRound1(room);
+    emitChange();
+    return;
+  }
+
+  if (room.status === RoomStatus.ROUND_2 && room.turnType === "DIRECTED_QUESTION") {
+    const target = participantById(room, draft.targetParticipantId) ?? chooseValidAITarget(room, participant, null);
+    const published = await publishDraft(room, participant, draft, {
+      round: 2,
+      targetParticipantId: target.id
+    });
+    if (published) {
+      room.currentQuestion = {
+        askerId: participant.id,
+        targetParticipantId: target.id,
+        text: draft.text
+      };
+      setTurn(room, target.id, "DIRECTED_ANSWER");
+    } else {
+      room.currentQuestion = null;
+      room.round2Index += 1;
+      startRound2Question(room);
+    }
+    emitChange();
+    return;
+  }
+
+  if (room.status === RoomStatus.ROUND_2 && room.turnType === "DIRECTED_ANSWER") {
+    await publishDraft(room, participant, draft, {
+      round: 2,
+      targetParticipantId: room.currentQuestion?.askerId ?? null
+    });
+    room.currentQuestion = null;
+    room.round2Index += 1;
+    startRound2Question(room);
+    emitChange();
+    return;
+  }
+
+  if (room.status === RoomStatus.ROUND_3) {
+    const target = participantById(room, draft.targetParticipantId) ?? chooseValidAITarget(room, participant, null);
+    const reason = draft.text || "理由なし";
+    const finalDraft = {
+      ...draft,
+      text: `AIだと思う人：${target.displayName}\n理由：${reason}`
+    };
+    await publishDraft(room, participant, finalDraft, {
+      round: 3,
+      targetParticipantId: target.id,
+      skipLengthCheck: true
+    });
+    participant.finalSuspectId = target.id;
+    room.round3Index += 1;
+    advanceRound3(room);
+    emitChange();
+  }
+}
+
+async function publishDraft(room, participant, draft, options) {
+  const text = options.skipLengthCheck ? stripControlChars(draft.text) : normalizeFinalText(draft.text);
+  if (!text) {
+    addSystemMessage(room, `${participant.displayName} は未入力のため、このターンを消費しました。`);
+    return false;
+  }
   const moderation = await moderateMessage(text);
   if (!moderation.allowed) {
     addBlockedMessage(room, participant, moderation.reason);
-    return;
+    return false;
   }
   addChatMessage(room, participant, text, options);
+  return true;
 }
 
-async function submitAITurnText(room, participant, rawText, options) {
-  const text = clampChars(stripControlChars(rawText), 60);
-  const moderation = await moderateMessage(text);
-  addChatMessage(room, participant, moderation.allowed ? text : "そこはゲーム外だから答えない。別の質問にして", options);
-}
-
-function normalizeAndValidateText(rawText) {
+function normalizeDraftText(rawText) {
   const text = stripControlChars(rawText);
-  if (!text) {
-    throw publicError("発言を入力してください。");
+  if (charLength(text) > MESSAGE_LIMIT) {
+    throw publicError(`発言は${MESSAGE_LIMIT}文字以内で入力してください。`);
   }
-  if (charLength(text) > 60) {
-    throw publicError("発言は60字以内で入力してください。");
-  }
+  return text;
+}
+
+function normalizeFinalText(rawText) {
+  const text = normalizeDraftText(rawText);
   return text;
 }
 
@@ -1034,6 +1133,7 @@ export const testOnly = {
   store,
   createRoomFromUsers,
   setTurn,
+  finalizeCurrentTurn,
   finalizeVotes,
   startRound1,
   sanitizeRoomForParticipant

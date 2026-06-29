@@ -4,8 +4,11 @@ const state = {
   room: null,
   eventSource: null,
   timer: null,
+  draftTimer: null,
   showRules: false
 };
+
+const MESSAGE_LIMIT = 20;
 
 const app = document.querySelector("#app");
 const sessionPill = document.querySelector("#sessionPill");
@@ -218,9 +221,9 @@ function turnPanel() {
     return `
       <section class="input-panel">
         <label>質問する相手${targetSelectHtml()}</label>
-        <label>質問<textarea id="turnText" maxlength="60" placeholder="60字以内で質問"></textarea></label>
-        <div class="compact-row"><span id="counter" class="counter">0 / 60</span></div>
-        <button class="primary" data-action="send-question">質問する</button>
+        <label>質問<textarea id="turnText" maxlength="${MESSAGE_LIMIT}" placeholder="${MESSAGE_LIMIT}文字以内で質問"></textarea></label>
+        <div class="compact-row"><span id="counter" class="counter">0 / ${MESSAGE_LIMIT}</span><span class="muted">20秒ちょうどで送信されます</span></div>
+        <button class="primary" data-action="send-question">下書きを保存</button>
       </section>
     `;
   }
@@ -229,18 +232,18 @@ function turnPanel() {
     return `
       <section class="input-panel">
         <label>AIだと思う人${targetSelectHtml()}</label>
-        <label>理由<textarea id="turnText" maxlength="36" placeholder="短く理由を書く"></textarea></label>
-        <div class="compact-row"><span id="counter" class="counter">0 / 60</span></div>
-        <button class="primary" data-action="send-final">最終推理を送る</button>
+        <label>理由<textarea id="turnText" maxlength="${MESSAGE_LIMIT}" placeholder="${MESSAGE_LIMIT}文字以内で理由を書く"></textarea></label>
+        <div class="compact-row"><span id="counter" class="counter">0 / ${MESSAGE_LIMIT}</span><span class="muted">20秒ちょうどで送信されます</span></div>
+        <button class="primary" data-action="send-final">下書きを保存</button>
       </section>
     `;
   }
 
   return `
     <section class="input-panel">
-      <label>${room.status === "ROUND_1" ? "お題への回答" : "回答"}<textarea id="turnText" maxlength="60" placeholder="60字以内で入力"></textarea></label>
-      <div class="compact-row"><span id="counter" class="counter">0 / 60</span></div>
-      <button class="primary" data-action="${room.status === "ROUND_1" ? "send-round1" : "send-answer"}">送信</button>
+      <label>${room.status === "ROUND_1" ? "お題への回答" : "回答"}<textarea id="turnText" maxlength="${MESSAGE_LIMIT}" placeholder="${MESSAGE_LIMIT}文字以内で入力"></textarea></label>
+      <div class="compact-row"><span id="counter" class="counter">0 / ${MESSAGE_LIMIT}</span><span class="muted">20秒ちょうどで送信されます</span></div>
+      <button class="primary" data-action="${room.status === "ROUND_1" ? "send-round1" : "send-answer"}">下書きを保存</button>
     </section>
   `;
 }
@@ -437,10 +440,10 @@ function turnDescription(room) {
     return `${room.currentTurn.askerDisplayName} からの質問に答えます。`;
   }
   if (room.status === "ROUND_2") {
-    return "相手を1人選んで、60字以内で質問します。";
+    return `相手を1人選んで、${MESSAGE_LIMIT}文字以内で質問します。入力済みでも20秒ちょうどで送信されます。`;
   }
   if (room.status === "ROUND_3") {
-    return "AIだと思う相手と理由を短く出します。";
+    return `AIだと思う相手と理由を${MESSAGE_LIMIT}文字以内で出します。入力済みでも20秒ちょうどで送信されます。`;
   }
   return "";
 }
@@ -476,10 +479,16 @@ document.addEventListener("input", (event) => {
   if (!counter) {
     return;
   }
-  const fixedPrefix = state.room?.status === "ROUND_3" ? getFinalPrefixLength() : 0;
-  const count = Array.from(event.target.value.trim()).length + fixedPrefix;
-  counter.textContent = `${count} / 60`;
-  counter.classList.toggle("over", count > 60);
+  const count = Array.from(event.target.value.trim()).length;
+  counter.textContent = `${count} / ${MESSAGE_LIMIT}`;
+  counter.classList.toggle("over", count > MESSAGE_LIMIT);
+  scheduleDraftSave(0);
+});
+
+document.addEventListener("change", (event) => {
+  if (event.target.id === "targetSelect") {
+    scheduleDraftSave(0);
+  }
 });
 
 document.addEventListener("click", async (event) => {
@@ -545,14 +554,58 @@ document.addEventListener("click", async (event) => {
 });
 
 async function sendTextAction(actionType, targetParticipantId = null) {
-  const text = document.querySelector("#turnText")?.value ?? "";
-  await roomAction("action", { actionType, targetParticipantId, text });
+  await saveDraftAction(actionType, targetParticipantId, true);
+  showToast("下書きを保存しました。20秒で送信されます。");
 }
 
-function getFinalPrefixLength() {
-  const select = document.querySelector("#targetSelect");
-  const target = state.room.participants.find((participant) => participant.id === select?.value);
-  return Array.from(`AIだと思う人：${target?.displayName ?? ""}\n理由：`).length;
+function scheduleDraftSave(delay = 180) {
+  if (!state.room || state.room.currentTurn?.participantId !== state.room.myParticipant.id) {
+    return;
+  }
+  clearTimeout(state.draftTimer);
+  state.draftTimer = setTimeout(() => {
+    const actionType = currentActionType();
+    if (!actionType) {
+      return;
+    }
+    const targetParticipantId = document.querySelector("#targetSelect")?.value ?? null;
+    saveDraftAction(actionType, targetParticipantId, true).catch(() => {});
+  }, delay);
+}
+
+function currentActionType() {
+  if (!state.room || state.room.currentTurn?.participantId !== state.room.myParticipant.id) {
+    return null;
+  }
+  if (state.room.status === "ROUND_1") {
+    return "ROUND_1_ANSWER";
+  }
+  if (state.room.status === "ROUND_2" && state.room.currentTurn.turnType === "DIRECTED_QUESTION") {
+    return "DIRECTED_QUESTION";
+  }
+  if (state.room.status === "ROUND_2" && state.room.currentTurn.turnType === "DIRECTED_ANSWER") {
+    return "DIRECTED_ANSWER";
+  }
+  if (state.room.status === "ROUND_3") {
+    return "FINAL_SUSPICION";
+  }
+  return null;
+}
+
+async function saveDraftAction(actionType, targetParticipantId = null, silent = true) {
+  const text = document.querySelector("#turnText")?.value ?? "";
+  await api(`/api/rooms/${state.room.id}/action`, {
+    method: "POST",
+    body: {
+      guestToken: state.token,
+      actionType,
+      targetParticipantId,
+      text
+    }
+  });
+  if (!silent) {
+    await refresh();
+  }
 }
 
 async function roomAction(action, body) {
