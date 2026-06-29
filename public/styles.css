@@ -1,17 +1,24 @@
 :root {
   color-scheme: light;
-  --ink: #15171c;
-  --muted: #5b6270;
-  --line: #d8dee8;
-  --paper: #f8f6f0;
+  --ink: #111318;
+  --muted: #69707a;
+  --line: #dfe3e8;
+  --paper: #f5f6f4;
   --panel: #ffffff;
+  --panel-soft: #f9faf9;
+  --accent: #0f766e;
+  --accent-soft: #e8f4f2;
   --teal: #14b8a6;
   --teal-dark: #0f766e;
   --coral: #ff6b57;
   --gold: #f5b942;
   --violet: #6d5bd0;
   --danger: #b42318;
-  --shadow: 0 18px 48px rgba(21, 23, 28, 0.12);
+  --danger-soft: #fff2f0;
+  --shadow: 0 1px 2px rgba(17, 19, 24, 0.06);
+  --shell-gutter: max(16px, calc((100vw - 1120px) / 2));
+  --game-sidebar: 300px;
+  --game-gap: 16px;
   font-family:
     Inter,
     "Segoe UI",
@@ -28,10 +35,7 @@
 body {
   margin: 0;
   min-height: 100vh;
-  background:
-    linear-gradient(135deg, rgba(20, 184, 166, 0.12), transparent 28%),
-    linear-gradient(225deg, rgba(255, 107, 87, 0.14), transparent 30%),
-    var(--paper);
+  background: var(--paper);
   color: var(--ink);
 }
 
@@ -45,6 +49,12 @@ textarea {
 button {
   border: 0;
   cursor: pointer;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease,
+    opacity 140ms ease,
+    filter 140ms ease;
 }
 
 button:disabled {
@@ -55,32 +65,36 @@ button:disabled {
 .app-shell {
   width: min(1120px, calc(100% - 32px));
   margin: 0 auto;
-  padding: 22px 0 32px;
+  padding: 18px 0 36px;
+}
+
+.game-view .app-shell {
+  padding-bottom: 188px;
 }
 
 .topbar {
   display: grid;
-  grid-template-columns: 54px 1fr auto;
+  grid-template-columns: 40px 1fr auto;
   align-items: center;
-  gap: 14px;
-  margin-bottom: 18px;
+  gap: 12px;
+  margin-bottom: 16px;
 }
 
 .brand-mark {
-  width: 54px;
-  height: 54px;
+  width: 40px;
+  height: 40px;
 }
 
 .brand-mark svg {
   display: block;
   width: 100%;
   height: 100%;
-  filter: drop-shadow(0 8px 12px rgba(21, 23, 28, 0.16));
 }
 
 .eyebrow {
+  display: none;
   margin: 0;
-  color: var(--teal-dark);
+  color: var(--accent);
   font-size: 0.74rem;
   font-weight: 800;
   letter-spacing: 0;
@@ -95,24 +109,25 @@ p {
 
 h1 {
   margin-bottom: 0;
-  font-size: clamp(1.75rem, 4vw, 3.4rem);
+  font-size: clamp(1.35rem, 3vw, 2rem);
   line-height: 1;
   letter-spacing: 0;
 }
 
 h2 {
-  font-size: 1.35rem;
+  font-size: 1.1rem;
+  line-height: 1.25;
 }
 
 .session-pill {
-  min-width: 120px;
-  padding: 8px 12px;
+  min-width: 108px;
+  padding: 7px 10px;
   border: 1px solid var(--line);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.78);
+  background: var(--panel);
   color: var(--muted);
   text-align: center;
-  font-size: 0.92rem;
+  font-size: 0.86rem;
 }
 
 .view {
@@ -123,7 +138,7 @@ h2 {
 .game-layout {
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
-  gap: 18px;
+  gap: var(--game-gap);
   align-items: stretch;
 }
 
@@ -137,7 +152,7 @@ h2 {
 .modal-panel {
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.92);
+  background: var(--panel);
   box-shadow: var(--shadow);
 }
 
@@ -176,7 +191,7 @@ h2 {
 }
 
 .signal-tile.ai {
-  background: #15171c;
+  background: var(--ink);
 }
 
 .home-copy {
@@ -186,7 +201,7 @@ h2 {
 }
 
 .home-copy h2 {
-  font-size: clamp(2rem, 5vw, 4.4rem);
+  font-size: clamp(2rem, 5vw, 3.8rem);
   line-height: 1.02;
   margin-bottom: 12px;
   letter-spacing: 0;
@@ -228,9 +243,26 @@ h2 {
   color: #fff;
 }
 
+.primary:hover:not(:disabled) {
+  background: #252932;
+}
+
+.turn-save-button {
+  --turn-progress: 0%;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.16) 0 var(--turn-progress), transparent var(--turn-progress) 100%),
+    var(--ink);
+  color: #fff;
+  box-shadow: inset 0 0 0 1px rgba(21, 23, 28, 0.12);
+}
+
+.turn-save-button:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+
 .secondary {
-  background: var(--teal);
-  color: #042f2e;
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
 .danger {
@@ -244,6 +276,11 @@ h2 {
   border: 1px solid var(--line);
 }
 
+.ghost:hover:not(:disabled),
+.vote-button:hover:not(:disabled) {
+  border-color: var(--ink);
+}
+
 .side-panel,
 .stage-panel,
 .chat-panel,
@@ -254,26 +291,23 @@ h2 {
 }
 
 .stat-grid,
-.meta-grid,
-.persona-grid {
+.meta-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
 
 .stat,
-.meta,
-.persona-item {
-  min-height: 68px;
+.meta {
+  min-height: 56px;
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 12px;
-  background: #fbfcfe;
+  background: var(--panel-soft);
 }
 
 .stat strong,
-.meta strong,
-.persona-item strong {
+.meta strong {
   display: block;
   margin-bottom: 5px;
   font-size: 0.78rem;
@@ -282,9 +316,9 @@ h2 {
 
 .queue-meter {
   width: 100%;
-  height: 12px;
+  height: 8px;
   border-radius: 999px;
-  background: #e7edf3;
+  background: #e7e9ec;
   overflow: hidden;
   margin: 18px 0;
 }
@@ -292,7 +326,7 @@ h2 {
 .queue-meter span {
   display: block;
   height: 100%;
-  background: linear-gradient(90deg, var(--teal), var(--gold), var(--coral));
+  background: var(--ink);
 }
 
 .role-title {
@@ -301,18 +335,47 @@ h2 {
   gap: 10px;
   padding: 8px 12px;
   border-radius: 999px;
-  background: #eefaf8;
-  color: var(--teal-dark);
+  background: var(--accent-soft);
+  color: var(--accent);
   font-weight: 900;
 }
 
 .game-layout {
-  grid-template-columns: minmax(0, 320px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, var(--game-sidebar)) minmax(0, 1fr);
+  align-items: start;
 }
 
 .game-main {
   display: grid;
-  gap: 14px;
+  gap: 12px;
+}
+
+.room-view .topbar {
+  margin-bottom: 12px;
+}
+
+.room-view .brand-mark {
+  width: 34px;
+  height: 34px;
+}
+
+.room-view h1 {
+  font-size: 1.35rem;
+}
+
+.game-layout > .side-panel {
+  position: sticky;
+  top: 12px;
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.game-layout > .side-panel h3 {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 700;
 }
 
 .phase-chip {
@@ -322,9 +385,10 @@ h2 {
   min-height: 34px;
   padding: 6px 12px;
   border-radius: 999px;
-  background: #fff4dc;
-  color: #7a4b00;
+  background: var(--ink);
+  color: #fff;
   font-weight: 900;
+  width: fit-content;
 }
 
 .participant-list {
@@ -333,7 +397,7 @@ h2 {
 
 .participant {
   width: 100%;
-  min-height: 44px;
+  min-height: 40px;
   display: grid;
   grid-template-columns: 34px 1fr auto;
   align-items: center;
@@ -345,12 +409,12 @@ h2 {
 }
 
 .avatar {
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
   border-radius: 7px;
   display: grid;
   place-items: center;
-  background: #15171c;
+  background: var(--ink);
   color: white;
   font-weight: 900;
 }
@@ -359,15 +423,15 @@ h2 {
   min-width: 52px;
   padding: 4px 8px;
   border-radius: 999px;
-  background: #edf2ff;
-  color: #3443a8;
+  background: #eef1f4;
+  color: #3f4652;
   text-align: center;
   font-size: 0.8rem;
   font-weight: 800;
 }
 
 .chat-panel {
-  min-height: 420px;
+  min-height: calc(100dvh - 274px);
   display: grid;
   grid-template-rows: auto 1fr;
 }
@@ -376,7 +440,7 @@ h2 {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  max-height: 520px;
+  max-height: calc(100dvh - 340px);
   overflow: auto;
   padding-right: 4px;
 }
@@ -389,12 +453,12 @@ h2 {
 }
 
 .message.system {
-  background: #f7f8fb;
+  background: var(--panel-soft);
   color: var(--muted);
 }
 
 .message.blocked {
-  background: #fff2f0;
+  background: var(--danger-soft);
   border-color: #ffd1ca;
 }
 
@@ -405,6 +469,20 @@ h2 {
   margin-bottom: 5px;
   color: var(--muted);
   font-size: 0.84rem;
+}
+
+.message .ghost[data-report-message],
+.participant .ghost[data-report-participant] {
+  min-height: 28px;
+  padding: 4px 8px;
+  opacity: 0;
+}
+
+.message:hover .ghost[data-report-message],
+.message:focus-within .ghost[data-report-message],
+.participant:hover .ghost[data-report-participant],
+.participant:focus-within .ghost[data-report-participant] {
+  opacity: 1;
 }
 
 .message p {
@@ -419,6 +497,53 @@ h2 {
   gap: 10px;
 }
 
+.game-main > .input-panel {
+  position: fixed;
+  z-index: 30;
+  left: calc(var(--shell-gutter) + var(--game-sidebar) + var(--game-gap));
+  right: var(--shell-gutter);
+  bottom: 16px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px 12px;
+  padding: 14px;
+  border-color: rgba(17, 19, 24, 0.14);
+  box-shadow: 0 16px 40px rgba(17, 19, 24, 0.14);
+}
+
+.game-main > .input-panel > label,
+.game-main > .input-panel > h2,
+.game-main > .input-panel > strong,
+.game-main > .input-panel > p,
+.game-main > .input-panel > .vote-list {
+  grid-column: 1 / -1;
+}
+
+.game-main > .input-panel > label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.game-main > .input-panel > h2,
+.game-main > .input-panel > strong,
+.game-main > .input-panel > p {
+  margin: 0;
+}
+
+.game-main > .input-panel > .compact-row {
+  grid-column: 1 / 2;
+}
+
+.game-main > .input-panel > .primary {
+  grid-column: 2 / 3;
+  min-width: 148px;
+  align-self: stretch;
+}
+
 .input-panel textarea,
 .input-panel select,
 .input-panel input {
@@ -431,8 +556,13 @@ h2 {
 }
 
 .input-panel textarea {
-  min-height: 92px;
+  min-height: 80px;
   resize: vertical;
+}
+
+.game-main > .input-panel textarea {
+  min-height: 72px;
+  max-height: 28dvh;
 }
 
 .counter {
@@ -456,7 +586,7 @@ h2 {
 }
 
 .vote-button:hover:not(:disabled) {
-  border-color: var(--teal);
+  border-color: var(--ink);
 }
 
 .result-panel {
@@ -484,6 +614,10 @@ h2 {
   opacity: 1;
 }
 
+.game-view .toast {
+  bottom: 178px;
+}
+
 .muted {
   color: var(--muted);
 }
@@ -496,6 +630,16 @@ h2 {
   .home-layout,
   .game-layout {
     grid-template-columns: 1fr;
+  }
+
+  .game-layout > .side-panel {
+    position: static;
+  }
+
+  .game-main > .input-panel {
+    left: 12px;
+    right: 12px;
+    bottom: 12px;
   }
 
   .topbar {
@@ -633,15 +777,13 @@ h2 {
   }
 
   .stat-grid,
-  .meta-grid,
-  .persona-grid {
+  .meta-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px;
   }
 
   .stat,
-  .meta,
-  .persona-item {
+  .meta {
     min-height: 0;
     padding: 9px;
     font-size: 0.88rem;

@@ -9,7 +9,7 @@ const state = {
 };
 
 const MESSAGE_LIMIT = 30;
-const TURN_SECONDS = 60;
+const TURN_SECONDS = 30;
 
 const app = document.querySelector("#app");
 const sessionPill = document.querySelector("#sessionPill");
@@ -56,6 +56,7 @@ async function refresh(options = {}) {
       state.room = null;
     }
     render();
+    updateCountdowns();
   } catch (error) {
     if (recoverSession && isSessionError(error)) {
       await resetSession();
@@ -81,6 +82,7 @@ function connectEvents() {
 }
 
 function render() {
+  syncViewMode();
   if (!state.me) {
     app.innerHTML = `<section class="intro-panel"><h2>接続中</h2></section>`;
     return;
@@ -94,6 +96,12 @@ function render() {
     return;
   }
   renderHome();
+}
+
+function syncViewMode() {
+  const fixedActionStatuses = new Set(["ROUND_1", "ROUND_2", "ROUND_3", "VOTING"]);
+  document.body.classList.toggle("room-view", Boolean(state.room));
+  document.body.classList.toggle("game-view", Boolean(state.room && fixedActionStatuses.has(state.room.status)));
 }
 
 function renderHome() {
@@ -150,10 +158,6 @@ function renderRoom() {
     renderRoleReveal();
     return;
   }
-  if (room.status === "PERSONA_REVEAL") {
-    renderPersonaReveal();
-    return;
-  }
   if (room.status === "VOTING") {
     renderGameShell(votePanel());
     return;
@@ -181,27 +185,10 @@ function renderRoleReveal() {
       <p class="role-title">${roleLabel(state.room.myParticipant.role)}</p>
       <h2>${roleLabel(state.room.myParticipant.role)}として参加します</h2>
       <p>${escapeHtml(roleText)}</p>
-      ${ready ? `<p class="phase-chip">確認済み。ほかのプレイヤー待ち ${readyText}</p>` : `<p class="muted">全員が確認すると、設定カード画面に進みます。</p>`}
+      ${ready ? `<p class="phase-chip">確認済み。ほかのプレイヤー待ち ${readyText}</p>` : `<p class="muted">全員が確認すると、ラウンド1が始まります。</p>`}
       <div class="participant-list">${participantsHtml()}</div>
       <div class="action-row">
-        <button class="primary" data-action="role-ack" ${ready ? "disabled" : ""}>${ready ? "ほかのプレイヤー待ち" : "設定カードを見る"}</button>
-        <button class="ghost" data-action="leave">退出</button>
-      </div>
-    </section>
-  `;
-}
-
-function renderPersonaReveal() {
-  const ready = state.room.myParticipant.personaReady;
-  const readyText = `${state.room.readiness?.personaReadyCount ?? 0} / ${state.room.readiness?.humanCount ?? 3}`;
-  app.innerHTML = `
-    <section class="stage-panel">
-      <h2>あなたの設定</h2>
-      ${personaGrid(state.room.myParticipant.persona)}
-      <p class="muted">設定を使って話すと自然に遊べます。完全に従う必要はありません。</p>
-      ${ready ? `<p class="phase-chip">確認済み。ほかのプレイヤー待ち ${readyText}</p>` : `<p class="muted">全員が確認すると、ラウンド1が始まります。</p>`}
-      <div class="action-row">
-        <button class="primary" data-action="persona-ack" ${ready ? "disabled" : ""}>${ready ? "ほかのプレイヤー待ち" : "ゲームへ進む"}</button>
+        <button class="primary" data-action="role-ack" ${ready ? "disabled" : ""}>${ready ? "ほかのプレイヤー待ち" : "確認して待つ"}</button>
         <button class="ghost" data-action="leave">退出</button>
       </div>
     </section>
@@ -258,7 +245,7 @@ function turnPanel() {
         <label>質問する相手${targetSelectHtml()}</label>
         <label>質問<textarea id="turnText" maxlength="${MESSAGE_LIMIT}" placeholder="${MESSAGE_LIMIT}文字以内で質問"></textarea></label>
         <div class="compact-row"><span id="counter" class="counter">0 / ${MESSAGE_LIMIT}</span><span class="muted">${TURN_SECONDS}秒ちょうどで送信されます</span></div>
-        <button class="primary" data-action="send-question">下書きを保存</button>
+        <button class="primary turn-save-button" data-action="send-question">下書きを保存</button>
       </section>
     `;
   }
@@ -269,7 +256,7 @@ function turnPanel() {
         <label>AIだと思う人${targetSelectHtml()}</label>
         <label>理由<textarea id="turnText" maxlength="${MESSAGE_LIMIT}" placeholder="${MESSAGE_LIMIT}文字以内で理由を書く"></textarea></label>
         <div class="compact-row"><span id="counter" class="counter">0 / ${MESSAGE_LIMIT}</span><span class="muted">${TURN_SECONDS}秒ちょうどで送信されます</span></div>
-        <button class="primary" data-action="send-final">下書きを保存</button>
+        <button class="primary turn-save-button" data-action="send-final">下書きを保存</button>
       </section>
     `;
   }
@@ -278,7 +265,7 @@ function turnPanel() {
     <section class="input-panel">
       <label>${room.status === "ROUND_1" ? "お題への回答" : "回答"}<textarea id="turnText" maxlength="${MESSAGE_LIMIT}" placeholder="${MESSAGE_LIMIT}文字以内で入力"></textarea></label>
       <div class="compact-row"><span id="counter" class="counter">0 / ${MESSAGE_LIMIT}</span><span class="muted">${TURN_SECONDS}秒ちょうどで送信されます</span></div>
-      <button class="primary" data-action="${room.status === "ROUND_1" ? "send-round1" : "send-answer"}">下書きを保存</button>
+      <button class="primary turn-save-button" data-action="${room.status === "ROUND_1" ? "send-round1" : "send-answer"}">下書きを保存</button>
     </section>
   `;
 }
@@ -371,24 +358,6 @@ function statsGrid(stats) {
       <div class="stat"><strong>勝率</strong>${stats.winRate}%</div>
       <div class="stat"><strong>市民勝率</strong>${stats.citizenWinRate}%</div>
       <div class="stat"><strong>AI見抜き</strong>${stats.correctAIVotes}回</div>
-    </div>
-  `;
-}
-
-function personaGrid(persona) {
-  const labels = {
-    mood: "気分",
-    lunch: "今日の昼",
-    minorTrouble: "小さな困りごと",
-    hobby: "好きなこと",
-    speakingStyle: "話し方",
-    reactionStyle: "疑われた時"
-  };
-  return `
-    <div class="persona-grid">
-      ${Object.entries(labels)
-        .map(([key, label]) => `<div class="persona-item"><strong>${label}</strong>${escapeHtml(persona[key])}</div>`)
-        .join("")}
     </div>
   `;
 }
@@ -502,9 +471,28 @@ function remainingSeconds(iso) {
 }
 
 function updateCountdowns() {
+  const seconds = remainingSeconds(state.room?.phaseEndsAt);
   const countdowns = document.querySelectorAll("[data-countdown]");
   for (const countdown of countdowns) {
-    countdown.textContent = `${remainingSeconds(state.room?.phaseEndsAt)}秒`;
+    countdown.textContent = `${seconds}秒`;
+  }
+  updateTurnSaveButtons(seconds);
+}
+
+function updateTurnSaveButtons(seconds) {
+  const buttons = document.querySelectorAll(".turn-save-button");
+  if (!buttons.length) {
+    return;
+  }
+  const endsAt = new Date(state.room?.phaseEndsAt).getTime();
+  const remainingMs = Number.isFinite(endsAt) ? Math.max(0, endsAt - Date.now()) : TURN_SECONDS * 1000;
+  const progress = Math.min(100, Math.max(0, (1 - remainingMs / (TURN_SECONDS * 1000)) * 100));
+  const remaining = typeof seconds === "number" ? seconds : TURN_SECONDS;
+  const label = `下書きを保存。残り${remaining}秒で送信されます。`;
+  for (const button of buttons) {
+    button.style.setProperty("--turn-progress", `${progress.toFixed(1)}%`);
+    button.setAttribute("aria-label", label);
+    button.title = label;
   }
 }
 
@@ -555,8 +543,6 @@ document.addEventListener("click", async (event) => {
       showToast("招待URLをコピーしました。");
     } else if (action === "role-ack") {
       await roomAction("action", { actionType: "ROLE_ACK" });
-    } else if (action === "persona-ack") {
-      await roomAction("action", { actionType: "PERSONA_ACK" });
     } else if (action === "send-round1") {
       await sendTextAction("ROUND_1_ANSWER");
     } else if (action === "send-answer") {

@@ -19,7 +19,6 @@ export const gameEvents = new EventEmitter();
 export const RoomStatus = Object.freeze({
   WAITING: "WAITING",
   ROLE_REVEAL: "ROLE_REVEAL",
-  PERSONA_REVEAL: "PERSONA_REVEAL",
   ROUND_1: "ROUND_1",
   ROUND_2: "ROUND_2",
   ROUND_3: "ROUND_3",
@@ -44,7 +43,7 @@ export const RoomMode = Object.freeze({
   DUEL: "DUEL"
 });
 
-const TURN_MS = 60_000;
+const TURN_MS = 30_000;
 const VOTE_MS = 15_000;
 const MESSAGE_LIMIT = 30;
 
@@ -214,19 +213,6 @@ export async function submitAction(guestToken, roomId, payload) {
     }
     participant.roleReady = true;
     if (humanParticipants(room).every((item) => item.roleReady)) {
-      room.status = RoomStatus.PERSONA_REVEAL;
-      addSystemMessage(room, "全員の設定カードが配られました。");
-    }
-    emitChange();
-    return { ok: true };
-  }
-
-  if (room.status === RoomStatus.PERSONA_REVEAL) {
-    if (payload.actionType !== "PERSONA_ACK") {
-      throw publicError("設定カード確認を完了してください。");
-    }
-    participant.personaReady = true;
-    if (humanParticipants(room).every((item) => item.personaReady)) {
       startRound1(room);
     }
     emitChange();
@@ -386,11 +372,9 @@ function createRoomFromUsers(users, options = {}) {
     role: collaboratorUser && user.id === collaboratorUser.id ? Role.AI_COLLABORATOR : Role.CITIZEN,
     team: collaboratorUser && user.id === collaboratorUser.id ? Team.AI : Team.HUMAN,
     seatNumber: 0,
-    persona: createPersona(),
     connected: true,
     finalSuspectId: null,
     roleReady: false,
-    personaReady: false,
     createdAt: Date.now()
   }));
   const aiParticipant = {
@@ -406,7 +390,6 @@ function createRoomFromUsers(users, options = {}) {
     connected: true,
     finalSuspectId: null,
     roleReady: true,
-    personaReady: true,
     createdAt: Date.now()
   };
 
@@ -930,15 +913,12 @@ function sanitizeRoomForParticipant(room, viewer) {
       displayName: viewer.displayName,
       role: viewer.role,
       team: viewer.team,
-      persona: viewer.persona,
       roleReady: viewer.roleReady,
-      personaReady: viewer.personaReady,
       hasVoted: room.votes.some((vote) => vote.voterParticipantId === viewer.id)
     },
     readiness: {
       humanCount: humanParticipants(room).length,
-      roleReadyCount: humanParticipants(room).filter((participant) => participant.roleReady).length,
-      personaReadyCount: humanParticipants(room).filter((participant) => participant.personaReady).length
+      roleReadyCount: humanParticipants(room).filter((participant) => participant.roleReady).length
     },
     knownAI: knownAI
       ? {
