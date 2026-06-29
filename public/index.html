@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AI人狼 MVP</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 48 48" role="img">
+            <path d="M24 4 42 14v20L24 44 6 34V14L24 4Z" fill="#15171c" />
+            <path d="M15 18h18v12H15z" fill="#f7f2e8" />
+            <path d="M18 21h4v4h-4zm8 0h4v4h-4z" fill="#14b8a6" />
+            <path d="M19 33h10" stroke="#ff6b57" stroke-width="3" stroke-linecap="round" />
+          </svg>
+        </div>
+        <div>
+          <p class="eyebrow">CHAT DEDUCTION</p>
+          <h1>AI人狼</h1>
+        </div>
+        <div class="session-pill" id="sessionPill">接続中</div>
+      </header>
+
+      <main id="app" class="view" aria-live="polite"></main>
+      <div id="toast" class="toast" role="status"></div>
+    </div>
+
+    <template id="rulesTemplate">
+      <section class="rules-panel">
+        <h2>ルール</h2>
+        <p>4人の中にAIが1体います。</p>
+        <p>人間ユーザー3人のうち、2人は市民、1人はAI協力者です。市民はAIを見つけ、AI協力者はAIを守ります。</p>
+        <p>ゲームは3ラウンドです。ラウンド1は共通お題、ラウンド2は指名質問、ラウンド3は最終推理です。</p>
+        <p>各発言は60字以内です。危険な質問、個人情報要求、プロンプト攻撃、荒らし発言はルール外です。</p>
+        <p>最後に人間ユーザー3人が投票し、AIに2票以上入れば人間陣営の勝利です。</p>
+      </section>
+    </template>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
