@@ -1,6 +1,6 @@
 # AI人狼 MVP
 
-4人部屋のうち3人が人間、1人がモックAIとして参加するチャット人狼ゲームです。
+4人部屋のうち3人が人間、1人がAIとして参加するチャット人狼ゲームです。
 
 ## 起動
 
@@ -21,14 +21,14 @@ npm start
 - 3ラウンド制のサーバー主導ターン管理
 - 20文字制限
 - ルール外発言ブロックとターン消費
-- モックAI発言生成
+- OpenAI APIまたはモックAIでの発言生成
 - 人間3人だけの投票
 - 勝敗判定、結果発表、簡易戦績
 - 通報、退出処理
 
 ## 補足
 
-このMVPは依存なしのNode.js実装です。`src/aiClient.js` と `src/moderation.js` を差し替えることで、本番AI APIや外部モデレーションAPIへ移行できます。
+このMVPは依存なしのNode.js実装です。`OPENAI_API_KEY` が設定されている場合は `src/aiClient.js` からOpenAI Responses APIを呼び出し、未設定またはAPI失敗時はモックAIで動きます。`src/moderation.js` を差し替えることで、外部モデレーションAPIへも移行できます。
 
 ## Render Freeで公開する
 
@@ -39,16 +39,17 @@ npm start
 3. Build Command は `npm install`
 4. Start Command は `npm start`
 5. Health Check Path は `/healthz`
-6. 初回デプロイでは環境変数なしで作成できる
+6. OpenAI APIを使う場合はEnvironmentに `OPENAI_API_KEY` を追加する
 
 Renderでは `PORT` が自動で渡されます。サーバーは `process.env.PORT` を優先して起動します。
 
-現在のMVPはモックAIで動くため、初回公開にAPIキーは不要です。本番AI APIへ差し替える時だけ、RenderのEnvironmentから `OPENAI_API_KEY` を追加してください。
+APIキーなしでもモックAIで動くため、初回公開にAPIキーは不要です。ChatGPT APIを使う場合だけ、RenderのEnvironmentから `OPENAI_API_KEY` を追加してください。モデルを変える場合は `OPENAI_MODEL` を追加します。未指定時は `gpt-5.4-mini` を使います。
 
 公開リポジトリにAPIキーを置かないでください。ローカルで使う場合は `.env.example` を参考にし、実際の `.env` はコミットしないでください。
 
 ```powershell
 $env:OPENAI_API_KEY="sk-..."
+$env:OPENAI_MODEL="gpt-5.4-mini"
 npm.cmd start
 ```
 
