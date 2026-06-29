@@ -59,6 +59,23 @@ test("AI協力者だけがAIの名前を知る", () => {
   assert.equal(state.knownAI.displayName, room.participants.find((participant) => participant.isAI).displayName);
 });
 
+test("役職確認後は本人に待機状態を返す", async () => {
+  const users = [createGuestSession(), createGuestSession(), createGuestSession()];
+  joinQueue(users[0].guestToken);
+  joinQueue(users[1].guestToken);
+  const match = joinQueue(users[2].guestToken);
+
+  await submitAction(users[0].guestToken, match.roomId, {
+    actionType: "ROLE_ACK"
+  });
+
+  const state = getRoomState(users[0].guestToken, match.roomId);
+  assert.equal(state.status, RoomStatus.ROLE_REVEAL);
+  assert.equal(state.myParticipant.roleReady, true);
+  assert.equal(state.readiness.roleReadyCount, 1);
+  assert.equal(state.readiness.humanCount, 3);
+});
+
 test("ルール外発言は内容を表示せずターンを消費する", async () => {
   const users = [createGuestSession(), createGuestSession(), createGuestSession()];
   joinQueue(users[0].guestToken);

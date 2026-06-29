@@ -21,7 +21,7 @@ async function init() {
   }
   await refresh();
   connectEvents();
-  state.timer = setInterval(render, 500);
+  state.timer = setInterval(updateCountdowns, 500);
 }
 
 async function refresh() {
@@ -136,14 +136,17 @@ function renderRoleReveal() {
     state.room.myParticipant.role === "AI_COLLABORATOR"
       ? `AIは「${state.room.knownAI?.displayName ?? "不明"}」です。AIに2票以上入らないよう議論を誘導してください。`
       : "この4人の中にAIが1体います。会話からAIを見抜いてください。";
+  const ready = state.room.myParticipant.roleReady;
+  const readyText = `${state.room.readiness?.roleReadyCount ?? 0} / ${state.room.readiness?.humanCount ?? 3}`;
   app.innerHTML = `
     <section class="stage-panel">
       <p class="role-title">${roleLabel(state.room.myParticipant.role)}</p>
       <h2>${roleLabel(state.room.myParticipant.role)}として参加します</h2>
       <p>${escapeHtml(roleText)}</p>
+      ${ready ? `<p class="phase-chip">確認済み。ほかのプレイヤー待ち ${readyText}</p>` : `<p class="muted">全員が確認すると、設定カード画面に進みます。</p>`}
       <div class="participant-list">${participantsHtml()}</div>
       <div class="action-row">
-        <button class="primary" data-action="role-ack">設定カードを見る</button>
+        <button class="primary" data-action="role-ack" ${ready ? "disabled" : ""}>${ready ? "ほかのプレイヤー待ち" : "設定カードを見る"}</button>
         <button class="ghost" data-action="leave">退出</button>
       </div>
     </section>
@@ -151,13 +154,16 @@ function renderRoleReveal() {
 }
 
 function renderPersonaReveal() {
+  const ready = state.room.myParticipant.personaReady;
+  const readyText = `${state.room.readiness?.personaReadyCount ?? 0} / ${state.room.readiness?.humanCount ?? 3}`;
   app.innerHTML = `
     <section class="stage-panel">
       <h2>あなたの設定</h2>
       ${personaGrid(state.room.myParticipant.persona)}
       <p class="muted">設定を使って話すと自然に遊べます。完全に従う必要はありません。</p>
+      ${ready ? `<p class="phase-chip">確認済み。ほかのプレイヤー待ち ${readyText}</p>` : `<p class="muted">全員が確認すると、ラウンド1が始まります。</p>`}
       <div class="action-row">
-        <button class="primary" data-action="persona-ack">ゲームへ進む</button>
+        <button class="primary" data-action="persona-ack" ${ready ? "disabled" : ""}>${ready ? "ほかのプレイヤー待ち" : "ゲームへ進む"}</button>
         <button class="ghost" data-action="leave">退出</button>
       </div>
     </section>
@@ -171,7 +177,7 @@ function renderGameShell(panelHtml) {
       <aside class="side-panel">
         <p class="phase-chip">${phaseLabel(room)}</p>
         <div class="meta-grid">
-          <div class="meta"><strong>残り時間</strong><span>${remainingSeconds(room.phaseEndsAt)}秒</span></div>
+          <div class="meta"><strong>残り時間</strong><span data-countdown>${remainingSeconds(room.phaseEndsAt)}秒</span></div>
           <div class="meta"><strong>役職</strong><span>${roleLabel(room.myParticipant.role)}</span></div>
         </div>
         ${room.knownAI ? `<p class="role-title">AIは「${escapeHtml(room.knownAI.displayName)}」</p>` : ""}
@@ -453,6 +459,13 @@ function remainingSeconds(iso) {
     return "-";
   }
   return Math.max(0, Math.ceil((new Date(iso).getTime() - Date.now()) / 1000));
+}
+
+function updateCountdowns() {
+  const countdowns = document.querySelectorAll("[data-countdown]");
+  for (const countdown of countdowns) {
+    countdown.textContent = `${remainingSeconds(state.room?.phaseEndsAt)}秒`;
+  }
 }
 
 document.addEventListener("input", (event) => {

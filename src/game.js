@@ -796,7 +796,14 @@ function sanitizeRoomForParticipant(room, viewer) {
       role: viewer.role,
       team: viewer.team,
       persona: viewer.persona,
+      roleReady: viewer.roleReady,
+      personaReady: viewer.personaReady,
       hasVoted: room.votes.some((vote) => vote.voterParticipantId === viewer.id)
+    },
+    readiness: {
+      humanCount: humanParticipants(room).length,
+      roleReadyCount: humanParticipants(room).filter((participant) => participant.roleReady).length,
+      personaReadyCount: humanParticipants(room).filter((participant) => participant.personaReady).length
     },
     knownAI: knownAI
       ? {
