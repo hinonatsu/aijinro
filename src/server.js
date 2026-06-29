@@ -12,6 +12,7 @@ import {
   joinQueue,
   leaveRoom,
   reportTarget,
+  startDuelMatch,
   submitAction,
   submitVote
 } from "./game.js";
@@ -75,6 +76,11 @@ async function handleApi(req, res, url) {
   if (req.method === "POST" && url.pathname === "/api/match") {
     const body = await readBody(req);
     return sendJson(res, joinQueue(body.guestToken));
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/duel") {
+    const body = await readBody(req);
+    return sendJson(res, startDuelMatch(body.guestToken));
   }
 
   if (req.method === "POST" && url.pathname === "/api/match/cancel") {

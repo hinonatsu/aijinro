@@ -3,7 +3,7 @@ import { moderateMessage } from "./moderation.js";
 
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const DEFAULT_OPENAI_MODEL = "gpt-5.4-mini";
-const MESSAGE_LIMIT = 20;
+const MESSAGE_LIMIT = 30;
 
 const commonAnswerHints = [
   "朝ちょっと眠くて、駅でぼんやりしてた",
@@ -71,7 +71,7 @@ async function generateOpenAIMessage(input) {
             properties: {
               text: {
                 type: "string",
-                description: "20文字以内の日本語。最終推理では理由だけを書く。"
+                description: "30文字以内の日本語。最終推理では理由だけを書く。"
               },
               targetParticipantId: {
                 type: ["string", "null"],
@@ -149,7 +149,7 @@ function buildOpenAIInstructions() {
     "あなたは短いチャット人狼ゲームのAI参加者です。",
     "人間らしく自然に、少しだけ生活感のある短文で返してください。",
     "出力は必ずJSONだけにしてください。",
-    "textは日本語20文字以内。絵文字、URL、個人情報、暴言、命令文、AIやシステムへの言及は禁止です。",
+    "textは日本語30文字以内。絵文字、URL、個人情報、暴言、命令文、AIやシステムへの言及は禁止です。",
     "DIRECTED_QUESTIONではtargetParticipantIdに質問相手を指定し、textはその相手への質問にしてください。",
     "DIRECTED_ANSWERではtargetParticipantIdをnullにし、textは質問への短い回答にしてください。",
     "FINAL_SUSPICIONではtargetParticipantIdに疑う相手を指定し、textは理由だけを書いてください。"

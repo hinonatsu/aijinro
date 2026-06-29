@@ -60,7 +60,7 @@ test("OpenAI APIが失敗したらモックAIに戻す", async () => {
   });
 
   assert.ok(output.text);
-  assert.ok(Array.from(output.text).length <= 20);
+  assert.ok(Array.from(output.text).length <= 30);
 });
 
 test("最終推理ではOpenAIの疑い先と理由を返す", async () => {

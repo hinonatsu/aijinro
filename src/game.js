@@ -39,9 +39,14 @@ export const Team = Object.freeze({
   AI: "AI"
 });
 
-const TURN_MS = 20_000;
+export const RoomMode = Object.freeze({
+  GROUP: "GROUP",
+  DUEL: "DUEL"
+});
+
+const TURN_MS = 60_000;
 const VOTE_MS = 15_000;
-const MESSAGE_LIMIT = 20;
+const MESSAGE_LIMIT = 30;
 
 const DISPLAY_NAMES = [
   "みかん",
@@ -156,13 +161,31 @@ export function joinQueue(guestToken) {
   let room = null;
   if (store.queue.length >= 3) {
     const userIds = store.queue.splice(0, 3);
-    room = createRoomFromUsers(userIds.map((userId) => store.users.get(userId)));
+    room = createRoomFromUsers(userIds.map((userId) => store.users.get(userId)), { mode: RoomMode.GROUP });
   }
 
   emitChange();
   return room
-    ? { status: "matched", roomId: room.id }
+    ? { status: "matched", roomId: room.id, mode: room.mode }
     : { status: "queued", queueCount: store.queue.length };
+}
+
+export function startDuelMatch(guestToken) {
+  const user = authenticate(guestToken);
+  ensureNotBanned(user);
+  clearFinishedRoom(user);
+
+  if (user.activeRoomId) {
+    const room = store.rooms.get(user.activeRoomId);
+    return { status: "already_in_room", roomId: user.activeRoomId, mode: room?.mode ?? RoomMode.GROUP };
+  }
+
+  removeFromQueue(user.id);
+  user.queuedAt = null;
+  const room = createRoomFromUsers([user], { mode: RoomMode.DUEL });
+
+  emitChange();
+  return { status: "matched", roomId: room.id, mode: room.mode };
 }
 
 export function cancelQueue(guestToken) {
@@ -347,18 +370,21 @@ export function getStats(guestToken) {
   return presentStats(user.stats);
 }
 
-function createRoomFromUsers(users) {
+function createRoomFromUsers(users, options = {}) {
   const roomId = id("room");
-  const displayNames = shuffle(DISPLAY_NAMES).slice(0, 4);
-  const collaboratorUser = sample(users);
+  const mode = options.mode ?? RoomMode.GROUP;
+  const isDuel = mode === RoomMode.DUEL;
+  const voteThreshold = isDuel ? 1 : 2;
+  const displayNames = shuffle(DISPLAY_NAMES).slice(0, users.length + 1);
+  const collaboratorUser = isDuel ? null : sample(users);
   const humanBase = users.map((user, index) => ({
     id: id("participant"),
     roomId,
     userId: user.id,
     displayName: displayNames[index],
     isAI: false,
-    role: user.id === collaboratorUser.id ? Role.AI_COLLABORATOR : Role.CITIZEN,
-    team: user.id === collaboratorUser.id ? Team.AI : Team.HUMAN,
+    role: collaboratorUser && user.id === collaboratorUser.id ? Role.AI_COLLABORATOR : Role.CITIZEN,
+    team: collaboratorUser && user.id === collaboratorUser.id ? Team.AI : Team.HUMAN,
     seatNumber: 0,
     persona: createPersona(),
     connected: true,
@@ -371,7 +397,7 @@ function createRoomFromUsers(users) {
     id: id("participant"),
     roomId,
     userId: null,
-    displayName: displayNames[3],
+    displayName: displayNames[users.length],
     isAI: true,
     role: Role.AI,
     team: Team.AI,
@@ -391,6 +417,8 @@ function createRoomFromUsers(users) {
 
   const room = {
     id: roomId,
+    mode,
+    voteThreshold,
     status: RoomStatus.ROLE_REVEAL,
     topicPrompt: sample(TOPICS),
     participants,
@@ -420,7 +448,12 @@ function createRoomFromUsers(users) {
     user.activeRoomId = room.id;
     user.queuedAt = null;
   }
-  addSystemMessage(room, "3人が揃いました。AI参加者を追加して試合を開始します。");
+  addSystemMessage(
+    room,
+    isDuel
+      ? "1:1練習を開始します。AIと3ラウンド話して、最後に投票します。"
+      : "3人が揃いました。AI参加者を追加して試合を開始します。"
+  );
   store.rooms.set(room.id, room);
   return room;
 }
@@ -490,7 +523,7 @@ function startVoting(room) {
   room.turnType = null;
   room.currentTurnParticipantId = null;
   room.phaseEndsAt = Date.now() + VOTE_MS;
-  addSystemMessage(room, "投票を開始しました。人間ユーザー3人だけが投票します。");
+  addSystemMessage(room, `投票を開始しました。人間ユーザー${humanParticipants(room).length}人が投票します。`);
   const timer = setTimeout(() => {
     const currentRoom = store.rooms.get(room.id);
     if (currentRoom?.status === RoomStatus.VOTING) {
@@ -795,26 +828,27 @@ function finalizeVotes(room) {
   clearRoomTimers(room);
   autoFillVotes(room);
   const ai = room.participants.find((participant) => participant.isAI);
+  const collaborator = room.participants.find((participant) => participant.role === Role.AI_COLLABORATOR);
+  const voteThreshold = room.voteThreshold ?? 2;
   const aiVotes = room.votes.filter((vote) => vote.targetParticipantId === ai.id).length;
-  const winnerTeam = aiVotes >= 2 ? Team.HUMAN : Team.AI;
+  const winnerTeam = aiVotes >= voteThreshold ? Team.HUMAN : Team.AI;
   room.status = RoomStatus.RESULT;
   room.winnerTeam = winnerTeam;
   room.endedAt = Date.now();
   room.result = {
     winnerTeam,
     aiParticipantId: ai.id,
-    collaboratorParticipantId: room.participants.find((participant) => {
-      return participant.role === Role.AI_COLLABORATOR;
-    }).id,
+    collaboratorParticipantId: collaborator?.id ?? null,
     aiVotes,
+    voteThreshold,
     votes: room.votes.map((vote) => ({ ...vote }))
   };
   updateStats(room);
   addSystemMessage(
     room,
     winnerTeam === Team.HUMAN
-      ? "AIに2票以上入り、人間陣営の勝利です。"
-      : "AIに2票入らなかったため、AI陣営の勝利です。"
+      ? `AIに${voteThreshold}票以上入り、人間陣営の勝利です。`
+      : `AIに${voteThreshold}票入らなかったため、AI陣営の勝利です。`
   );
 }
 
@@ -884,6 +918,8 @@ function sanitizeRoomForParticipant(room, viewer) {
 
   return {
     id: room.id,
+    mode: room.mode ?? RoomMode.GROUP,
+    voteThreshold: room.voteThreshold ?? 2,
     status: room.status,
     topicPrompt: room.topicPrompt,
     round: room.round,
@@ -954,7 +990,8 @@ function sanitizeRoomForParticipant(room, viewer) {
           winnerTeam: room.result.winnerTeam,
           aiParticipantId: room.result.aiParticipantId,
           collaboratorParticipantId: room.result.collaboratorParticipantId,
-          aiVotes: room.result.aiVotes
+          aiVotes: room.result.aiVotes,
+          voteThreshold: room.result.voteThreshold ?? room.voteThreshold ?? 2
         }
       : null,
     reportsCount: room.reports.length

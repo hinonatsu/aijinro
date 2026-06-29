@@ -8,7 +8,8 @@ const state = {
   showRules: false
 };
 
-const MESSAGE_LIMIT = 20;
+const MESSAGE_LIMIT = 30;
+const TURN_SECONDS = 60;
 
 const app = document.querySelector("#app");
 const sessionPill = document.querySelector("#sessionPill");
@@ -101,10 +102,11 @@ function renderHome() {
       <section class="intro-panel">
         ${signalGrid()}
         <div class="home-copy">
-          <h2>4人の中にAIが1体います。</h2>
-          <p>短い会話からAIを見抜くか、AI協力者としてAIを守るか。3つのタブで開始するとマッチングできます。</p>
+          <h2>遊ぶ人数を選ぶ</h2>
+          <p>4人部屋では人間3人とAI1体で対戦します。1:1練習では待たずにAIとすぐ遊べます。</p>
           <div class="action-row">
-            <button class="primary" data-action="start">プレイ開始</button>
+            <button class="primary" data-action="start">4人部屋で遊ぶ</button>
+            <button class="secondary" data-action="start-duel">1:1で練習</button>
             <button class="ghost" data-action="toggle-rules">ルールを見る</button>
           </div>
         </div>
@@ -164,10 +166,14 @@ function renderRoom() {
 }
 
 function renderRoleReveal() {
+  const isDuel = state.room.mode === "DUEL";
+  const voteThreshold = state.room.voteThreshold ?? 2;
   const roleText =
     state.room.myParticipant.role === "AI_COLLABORATOR"
-      ? `AIは「${state.room.knownAI?.displayName ?? "不明"}」です。AIに2票以上入らないよう議論を誘導してください。`
-      : "この4人の中にAIが1体います。会話からAIを見抜いてください。";
+      ? `AIは「${state.room.knownAI?.displayName ?? "不明"}」です。AIに${voteThreshold}票以上入らないよう議論を誘導してください。`
+      : isDuel
+        ? "1:1練習です。相手はAIです。3ラウンド話して最後に投票します。"
+        : "この4人の中にAIが1体います。会話からAIを見抜いてください。";
   const ready = state.room.myParticipant.roleReady;
   const readyText = `${state.room.readiness?.roleReadyCount ?? 0} / ${state.room.readiness?.humanCount ?? 3}`;
   app.innerHTML = `
@@ -251,7 +257,7 @@ function turnPanel() {
       <section class="input-panel">
         <label>質問する相手${targetSelectHtml()}</label>
         <label>質問<textarea id="turnText" maxlength="${MESSAGE_LIMIT}" placeholder="${MESSAGE_LIMIT}文字以内で質問"></textarea></label>
-        <div class="compact-row"><span id="counter" class="counter">0 / ${MESSAGE_LIMIT}</span><span class="muted">20秒ちょうどで送信されます</span></div>
+        <div class="compact-row"><span id="counter" class="counter">0 / ${MESSAGE_LIMIT}</span><span class="muted">${TURN_SECONDS}秒ちょうどで送信されます</span></div>
         <button class="primary" data-action="send-question">下書きを保存</button>
       </section>
     `;
@@ -262,7 +268,7 @@ function turnPanel() {
       <section class="input-panel">
         <label>AIだと思う人${targetSelectHtml()}</label>
         <label>理由<textarea id="turnText" maxlength="${MESSAGE_LIMIT}" placeholder="${MESSAGE_LIMIT}文字以内で理由を書く"></textarea></label>
-        <div class="compact-row"><span id="counter" class="counter">0 / ${MESSAGE_LIMIT}</span><span class="muted">20秒ちょうどで送信されます</span></div>
+        <div class="compact-row"><span id="counter" class="counter">0 / ${MESSAGE_LIMIT}</span><span class="muted">${TURN_SECONDS}秒ちょうどで送信されます</span></div>
         <button class="primary" data-action="send-final">下書きを保存</button>
       </section>
     `;
@@ -271,7 +277,7 @@ function turnPanel() {
   return `
     <section class="input-panel">
       <label>${room.status === "ROUND_1" ? "お題への回答" : "回答"}<textarea id="turnText" maxlength="${MESSAGE_LIMIT}" placeholder="${MESSAGE_LIMIT}文字以内で入力"></textarea></label>
-      <div class="compact-row"><span id="counter" class="counter">0 / ${MESSAGE_LIMIT}</span><span class="muted">20秒ちょうどで送信されます</span></div>
+      <div class="compact-row"><span id="counter" class="counter">0 / ${MESSAGE_LIMIT}</span><span class="muted">${TURN_SECONDS}秒ちょうどで送信されます</span></div>
       <button class="primary" data-action="${room.status === "ROUND_1" ? "send-round1" : "send-answer"}">下書きを保存</button>
     </section>
   `;
@@ -299,6 +305,8 @@ function renderResult() {
   const room = state.room;
   const ai = room.participants.find((participant) => participant.id === room.result?.aiParticipantId);
   const collaborator = room.participants.find((participant) => participant.id === room.result?.collaboratorParticipantId);
+  const voteThreshold = room.result?.voteThreshold ?? room.voteThreshold ?? 2;
+  const collaboratorText = collaborator ? `AI協力者は「${escapeHtml(collaborator.displayName)}」でした。` : "";
   const winner =
     room.status === "CLOSED"
       ? "試合は無効です"
@@ -311,8 +319,8 @@ function renderResult() {
       <h2>${winner}</h2>
       ${
         room.result
-          ? `<p>AIは「${escapeHtml(ai?.displayName ?? "")}」でした。AI協力者は「${escapeHtml(collaborator?.displayName ?? "")}」でした。</p>
-             <p>AIに入った票：${room.result.aiVotes}票</p>`
+          ? `<p>AIは「${escapeHtml(ai?.displayName ?? "")}」でした。${collaboratorText}</p>
+             <p>AIに入った票：${room.result.aiVotes}票 / 必要：${voteThreshold}票</p>`
           : ""
       }
       <div class="participant-list">${participantsHtml()}</div>
@@ -469,10 +477,10 @@ function turnDescription(room) {
     return `${room.currentTurn.askerDisplayName} からの質問に答えます。`;
   }
   if (room.status === "ROUND_2") {
-    return `相手を1人選んで、${MESSAGE_LIMIT}文字以内で質問します。入力済みでも20秒ちょうどで送信されます。`;
+    return `相手を1人選んで、${MESSAGE_LIMIT}文字以内で質問します。入力済みでも${TURN_SECONDS}秒ちょうどで送信されます。`;
   }
   if (room.status === "ROUND_3") {
-    return `AIだと思う相手と理由を${MESSAGE_LIMIT}文字以内で出します。入力済みでも20秒ちょうどで送信されます。`;
+    return `AIだと思う相手と理由を${MESSAGE_LIMIT}文字以内で出します。入力済みでも${TURN_SECONDS}秒ちょうどで送信されます。`;
   }
   return "";
 }
@@ -533,6 +541,9 @@ document.addEventListener("click", async (event) => {
     if (action === "start") {
       await api("/api/match", { method: "POST", body: { guestToken: state.token } });
       await refresh();
+    } else if (action === "start-duel") {
+      await api("/api/duel", { method: "POST", body: { guestToken: state.token } });
+      await refresh();
     } else if (action === "toggle-rules") {
       state.showRules = !state.showRules;
       render();
@@ -558,8 +569,9 @@ document.addEventListener("click", async (event) => {
       await roomAction("leave", {});
       await refresh();
     } else if (action === "play-again") {
+      const nextMatchPath = state.room?.mode === "DUEL" ? "/api/duel" : "/api/match";
       await roomAction("leave", {});
-      await api("/api/match", { method: "POST", body: { guestToken: state.token } });
+      await api(nextMatchPath, { method: "POST", body: { guestToken: state.token } });
       await refresh();
     } else if (action === "copy-result") {
       await navigator.clipboard.writeText(resultShareText());
@@ -584,7 +596,7 @@ document.addEventListener("click", async (event) => {
 
 async function sendTextAction(actionType, targetParticipantId = null) {
   await saveDraftAction(actionType, targetParticipantId, true);
-  showToast("下書きを保存しました。20秒で送信されます。");
+  showToast(`下書きを保存しました。${TURN_SECONDS}秒で送信されます。`);
 }
 
 function scheduleDraftSave(delay = 180) {
@@ -671,7 +683,8 @@ function resultShareText() {
   }
   const ai = room.participants.find((participant) => participant.id === room.result.aiParticipantId);
   const winner = room.result.winnerTeam === "HUMAN" ? "人間陣営" : "AI陣営";
-  return `AI人狼 結果：${winner}の勝利。AIは「${ai?.displayName}」。AIへの票は${room.result.aiVotes}票でした。`;
+  const voteThreshold = room.result.voteThreshold ?? room.voteThreshold ?? 2;
+  return `AI人狼 結果：${winner}の勝利。AIは「${ai?.displayName}」。AIへの票は${room.result.aiVotes}/${voteThreshold}票でした。`;
 }
 
 function escapeHtml(value) {
