@@ -17,25 +17,54 @@ const toast = document.querySelector("#toast");
 init().catch(showError);
 
 async function init() {
-  if (!state.token) {
-    const session = await api("/api/session", { method: "POST" });
-    state.token = session.guestToken;
-    sessionStorage.setItem("aiWerewolfToken", state.token);
-  }
+  await ensureSession();
   await refresh();
   connectEvents();
   state.timer = setInterval(updateCountdowns, 500);
 }
 
-async function refresh() {
-  state.me = await api(`/api/me?token=${encodeURIComponent(state.token)}`);
-  sessionPill.textContent = state.me.displayName;
-  if (state.me.activeRoomId) {
-    state.room = await api(`/api/rooms/${state.me.activeRoomId}?token=${encodeURIComponent(state.token)}`);
-  } else {
-    state.room = null;
+async function ensureSession(force = false) {
+  if (state.token && !force) {
+    return;
   }
-  render();
+  const session = await api("/api/session", { method: "POST" });
+  state.token = session.guestToken;
+  sessionStorage.setItem("aiWerewolfToken", state.token);
+}
+
+async function resetSession() {
+  if (state.eventSource) {
+    state.eventSource.close();
+    state.eventSource = null;
+  }
+  sessionStorage.removeItem("aiWerewolfToken");
+  state.token = null;
+  state.me = null;
+  state.room = null;
+  await ensureSession(true);
+}
+
+async function refresh(options = {}) {
+  const recoverSession = options.recoverSession ?? true;
+  try {
+    state.me = await api(`/api/me?token=${encodeURIComponent(state.token)}`);
+    sessionPill.textContent = state.me.displayName;
+    if (state.me.activeRoomId) {
+      state.room = await api(`/api/rooms/${state.me.activeRoomId}?token=${encodeURIComponent(state.token)}`);
+    } else {
+      state.room = null;
+    }
+    render();
+  } catch (error) {
+    if (recoverSession && isSessionError(error)) {
+      await resetSession();
+      await refresh({ recoverSession: false });
+      connectEvents();
+      showToast("セッションを作り直しました。もう一度開始してください。");
+      return;
+    }
+    throw error;
+  }
 }
 
 function connectEvents() {
@@ -624,9 +653,15 @@ async function api(url, options = {}) {
   });
   const data = await response.json();
   if (!response.ok) {
-    throw new Error(data.error ?? "通信に失敗しました。");
+    const error = new Error(data.error ?? "通信に失敗しました。");
+    error.status = response.status;
+    throw error;
   }
   return data;
+}
+
+function isSessionError(error) {
+  return error?.status === 401 || /セッションが無効|セッションが必要/.test(error?.message ?? "");
 }
 
 function resultShareText() {
@@ -656,5 +691,13 @@ function showToast(message) {
 
 function showError(error) {
   console.error(error);
+  if (isSessionError(error)) {
+    resetSession()
+      .then(() => refresh({ recoverSession: false }))
+      .then(() => connectEvents())
+      .then(() => showToast("セッションを作り直しました。もう一度開始してください。"))
+      .catch((sessionError) => showToast(sessionError.message ?? "セッション更新に失敗しました。"));
+    return;
+  }
   showToast(error.message ?? "エラーが発生しました。");
 }
