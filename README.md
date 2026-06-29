@@ -39,9 +39,11 @@ npm start
 3. Build Command は `npm install`
 4. Start Command は `npm start`
 5. Health Check Path は `/healthz`
-6. 環境変数に `OPENAI_API_KEY` を設定する
+6. 初回デプロイでは環境変数なしで作成できる
 
 Renderでは `PORT` が自動で渡されます。サーバーは `process.env.PORT` を優先して起動します。
+
+現在のMVPはモックAIで動くため、初回公開にAPIキーは不要です。本番AI APIへ差し替える時だけ、RenderのEnvironmentから `OPENAI_API_KEY` を追加してください。
 
 公開リポジトリにAPIキーを置かないでください。ローカルで使う場合は `.env.example` を参考にし、実際の `.env` はコミットしないでください。
 
