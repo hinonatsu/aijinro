@@ -99,7 +99,7 @@ function render() {
 }
 
 function syncViewMode() {
-  const fixedActionStatuses = new Set(["ROUND_1", "ROUND_2", "ROUND_3", "VOTING"]);
+  const fixedActionStatuses = new Set(["PERSONA_REVEAL", "ROUND_1", "ROUND_2", "ROUND_3", "VOTING"]);
   document.body.classList.toggle("room-view", Boolean(state.room));
   document.body.classList.toggle("game-view", Boolean(state.room && fixedActionStatuses.has(state.room.status)));
 }
