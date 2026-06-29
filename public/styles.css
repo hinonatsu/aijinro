@@ -249,9 +249,11 @@ h2 {
 
 .turn-save-button {
   --turn-progress: 0%;
-  background:
-    linear-gradient(90deg, rgba(255, 255, 255, 0.16) 0 var(--turn-progress), transparent var(--turn-progress) 100%),
-    var(--ink);
+  background: linear-gradient(
+    90deg,
+    var(--ink) 0 var(--turn-progress),
+    var(--accent) var(--turn-progress) 100%
+  );
   color: #fff;
   box-shadow: inset 0 0 0 1px rgba(21, 23, 28, 0.12);
 }
@@ -626,6 +628,13 @@ h2 {
   display: none;
 }
 
+@media (hover: none) {
+  .message .ghost[data-report-message],
+  .participant .ghost[data-report-participant] {
+    opacity: 1;
+  }
+}
+
 @media (max-width: 860px) {
   .home-layout,
   .game-layout {
@@ -666,6 +675,10 @@ h2 {
     padding: 8px 10px 14px;
   }
 
+  .game-view .app-shell {
+    padding-bottom: 214px;
+  }
+
   .topbar {
     grid-template-columns: 34px minmax(0, 1fr) auto;
     gap: 8px;
@@ -683,6 +696,10 @@ h2 {
 
   h1 {
     font-size: 1.9rem;
+  }
+
+  .room-view h1 {
+    font-size: 1.25rem;
   }
 
   h2 {
@@ -719,7 +736,7 @@ h2 {
   .result-panel,
   .rules-panel {
     padding: 12px;
-    box-shadow: 0 10px 24px rgba(21, 23, 28, 0.08);
+    box-shadow: var(--shadow);
   }
 
   .intro-panel {
@@ -824,7 +841,7 @@ h2 {
   }
 
   .chat-log {
-    max-height: 22dvh;
+    max-height: 34dvh;
     gap: 8px;
   }
 
@@ -844,6 +861,22 @@ h2 {
     min-height: 62px;
   }
 
+  .game-main > .input-panel {
+    grid-template-columns: 1fr;
+    padding: 10px;
+    bottom: calc(8px + env(safe-area-inset-bottom));
+  }
+
+  .game-main > .input-panel > .compact-row,
+  .game-main > .input-panel > .primary {
+    grid-column: 1 / -1;
+  }
+
+  .game-main > .input-panel > .primary {
+    min-width: 0;
+    width: 100%;
+  }
+
   .compact-row {
     align-items: center;
     justify-content: space-between;
@@ -858,12 +891,8 @@ h2 {
     order: 1;
   }
 
-  .game-main .input-panel {
-    order: 2;
-  }
-
   .game-main .chat-panel {
-    order: 3;
+    order: 2;
   }
 
   .game-layout > .side-panel {
