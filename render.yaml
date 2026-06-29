@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: aijinro
+    runtime: node
+    plan: free
+    repo: https://github.com/hinonatsu/aijinro
+    branch: main
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: OPENAI_API_KEY
+        sync: false

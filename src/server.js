@@ -26,6 +26,14 @@ const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
 
+    if (req.method === "GET" && url.pathname === "/healthz") {
+      return sendJson(res, {
+        status: "ok",
+        service: "ai-werewolf-mvp",
+        uptimeSeconds: Math.round(process.uptime())
+      });
+    }
+
     if (req.method === "GET" && url.pathname === "/events") {
       return handleEvents(req, res, url);
     }

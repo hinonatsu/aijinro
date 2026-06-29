@@ -29,3 +29,31 @@ npm start
 ## 補足
 
 このMVPは依存なしのNode.js実装です。`src/aiClient.js` と `src/moderation.js` を差し替えることで、本番AI APIや外部モデレーションAPIへ移行できます。
+
+## Render Freeで公開する
+
+このリポジトリはRenderの無料Web Serviceで動かせるように `render.yaml` を含めています。
+
+1. RenderでGitHubリポジトリ `hinonatsu/aijinro` を接続する
+2. BlueprintまたはWeb Serviceとして作成する
+3. Build Command は `npm install`
+4. Start Command は `npm start`
+5. Health Check Path は `/healthz`
+6. 環境変数に `OPENAI_API_KEY` を設定する
+
+Renderでは `PORT` が自動で渡されます。サーバーは `process.env.PORT` を優先して起動します。
+
+公開リポジトリにAPIキーを置かないでください。ローカルで使う場合は `.env.example` を参考にし、実際の `.env` はコミットしないでください。
+
+```powershell
+$env:OPENAI_API_KEY="sk-..."
+npm.cmd start
+```
+
+ヘルスチェック:
+
+```text
+GET /healthz
+```
+
+注意: 現在のMVPはメモリ上でゲーム状態を管理します。Render Freeではスリープや再起動で進行中の試合と戦績が消えます。公開デモ用途には十分ですが、常時運用する場合はPostgreSQLやRedisへの移行が必要です。
