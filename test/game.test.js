@@ -49,6 +49,52 @@ test("1:1練習は待機せず人間1人とAI1体の部屋を作成する", () =
   assert.equal(state.voteThreshold, 1);
 });
 
+test("1:1練習は指名質問をスキップして最終推理に進む", async () => {
+  const user = createGuestSession();
+  const match = startDuelMatch(user.guestToken);
+  const room = testOnly.store.rooms.get(match.roomId);
+
+  await submitAction(user.guestToken, room.id, {
+    actionType: "ROLE_ACK"
+  });
+
+  while (room.status === RoomStatus.ROUND_1) {
+    const currentParticipant = room.participants.find((participant) => {
+      return participant.id === room.currentTurnParticipantId;
+    });
+    if (!currentParticipant.isAI) {
+      await submitAction(user.guestToken, room.id, {
+        actionType: "ROUND_1_ANSWER",
+        text: "まず様子を見る"
+      });
+    }
+    await testOnly.finalizeCurrentTurn(room);
+  }
+
+  assert.equal(room.status, RoomStatus.ROUND_3);
+  assert.equal(room.turnType, "FINAL_SUSPICION");
+});
+
+test("1:1練習の最終推理は相手選択なしで保存できる", async () => {
+  const user = createGuestSession();
+  const match = startDuelMatch(user.guestToken);
+  const room = testOnly.store.rooms.get(match.roomId);
+  const human = room.participants.find((participant) => !participant.isAI);
+  const ai = room.participants.find((participant) => participant.isAI);
+  room.status = RoomStatus.ROUND_3;
+  room.round = 3;
+  room.round3Order = [human.id];
+  room.round3Index = 0;
+  testOnly.setTurn(room, human.id, "FINAL_SUSPICION");
+
+  await submitAction(user.guestToken, room.id, {
+    actionType: "FINAL_SUSPICION",
+    text: "返答が機械っぽい"
+  });
+
+  assert.equal(room.currentDraft.targetParticipantId, ai.id);
+});
+
 test("結果前は市民にAIの正体や他人の役職を送らない", () => {
   const users = [createGuestSession(), createGuestSession(), createGuestSession()];
   joinQueue(users[0].guestToken);

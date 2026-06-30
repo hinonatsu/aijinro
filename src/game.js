@@ -256,11 +256,13 @@ export async function submitAction(guestToken, roomId, payload) {
     if (payload.actionType !== "FINAL_SUSPICION") {
       throw publicError("最終推理を送ってください。");
     }
-    const target = assertTarget(room, payload.targetParticipantId);
-    if (target.id === participant.id) {
-      throw publicError("自分自身は選べません。");
-    }
-    saveTurnDraft(room, participant, payload);
+    const target = resolveTurnTarget(room, participant, payload.targetParticipantId, {
+      allowDuelFallback: true
+    });
+    saveTurnDraft(room, participant, {
+      ...payload,
+      targetParticipantId: target.id
+    });
     return { ok: true, saved: true, sendsAt: toIso(room.phaseEndsAt) };
   }
 
@@ -434,7 +436,7 @@ function createRoomFromUsers(users, options = {}) {
   addSystemMessage(
     room,
     isDuel
-      ? "AIか人間かわからない相手と3ターン話して最後に投票します。"
+      ? "相手と共通お題で話し、AI判定をして最後に投票します。"
       : "3人が揃いました。AI参加者を追加して試合を開始します。"
   );
   store.rooms.set(room.id, room);
@@ -456,13 +458,21 @@ function startRound1(room) {
 function advanceRound1(room) {
   room.turnIndex += 1;
   if (room.turnIndex >= room.turnOrder.length) {
-    startRound2(room);
+    if (room.mode === RoomMode.DUEL) {
+      startRound3(room);
+    } else {
+      startRound2(room);
+    }
     return;
   }
   setTurn(room, room.turnOrder[room.turnIndex], "COMMON_ANSWER");
 }
 
 function startRound2(room) {
+  if (room.mode === RoomMode.DUEL) {
+    startRound3(room);
+    return;
+  }
   clearRoomTimers(room);
   room.status = RoomStatus.ROUND_2;
   room.round = 2;
@@ -487,7 +497,10 @@ function startRound3(room) {
   room.round = 3;
   room.round3Order = shuffle(room.participants.map((participant) => participant.id));
   room.round3Index = 0;
-  addSystemMessage(room, "ラウンド3：最終推理を始めます。");
+  addSystemMessage(
+    room,
+    room.mode === RoomMode.DUEL ? "ラウンド2：AI判定を始めます。" : "ラウンド3：最終推理を始めます。"
+  );
   setTurn(room, room.round3Order[0], "FINAL_SUSPICION");
 }
 
@@ -660,11 +673,16 @@ function saveTurnDraft(room, participant, payload) {
   }
 
   let targetParticipantId = null;
-  if (["DIRECTED_QUESTION", "FINAL_SUSPICION"].includes(payload.actionType)) {
+  if (payload.actionType === "DIRECTED_QUESTION") {
     const target = assertTarget(room, payload.targetParticipantId);
     if (target.id === participant.id) {
       throw publicError("自分自身は選べません。");
     }
+    targetParticipantId = target.id;
+  } else if (payload.actionType === "FINAL_SUSPICION") {
+    const target = resolveTurnTarget(room, participant, payload.targetParticipantId, {
+      allowDuelFallback: true
+    });
     targetParticipantId = target.id;
   } else if (payload.actionType === "DIRECTED_ANSWER") {
     targetParticipantId = room.currentQuestion?.askerId ?? null;
@@ -1071,6 +1089,21 @@ function assertTarget(room, participantId) {
   const target = room.participants.find((participant) => participant.id === participantId);
   if (!target) {
     throw publicError("対象の参加者が見つかりません。");
+  }
+  return target;
+}
+
+function resolveTurnTarget(room, participant, participantId, options = {}) {
+  if (options.allowDuelFallback && room.mode === RoomMode.DUEL && !participantId) {
+    const target = chooseValidAITarget(room, participant, null);
+    if (!target) {
+      throw publicError("対象の参加者が見つかりません。");
+    }
+    return target;
+  }
+  const target = assertTarget(room, participantId);
+  if (target.id === participant.id) {
+    throw publicError("自分自身は選べません。");
   }
   return target;
 }

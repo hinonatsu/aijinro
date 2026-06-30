@@ -166,7 +166,7 @@ function renderRoleReveal() {
     state.room.myParticipant.role === "AI_COLLABORATOR"
       ? `AIは「${state.room.knownAI?.displayName ?? "不明"}」です。AIに${voteThreshold}票以上入らないよう議論を誘導してください。`
       : isDuel
-        ? "AIか人間かわからない相手と3ターン話して最後に投票します。"
+        ? "相手と共通お題で話し、AI判定をして最後に投票します。"
         : "この4人の中にAIが1体います。会話からAIを見抜いてください。";
   const ready = state.room.myParticipant.roleReady;
   const readyText = `${state.room.readiness?.roleReadyCount ?? 0} / ${state.room.readiness?.humanCount ?? 3}`;
@@ -195,6 +195,10 @@ function renderRoleReveal() {
 
 function renderGameShell(panelHtml) {
   const room = state.room;
+  if (isDuelRoom(room)) {
+    renderDuelGameShell(panelHtml);
+    return;
+  }
   app.innerHTML = `
     <div class="game-layout">
       <aside class="side-panel">
@@ -225,6 +229,32 @@ function renderGameShell(panelHtml) {
   `;
 }
 
+function renderDuelGameShell(panelHtml) {
+  const room = state.room;
+  app.innerHTML = `
+    <div class="duel-game-layout">
+      <div class="duel-game-top">
+        <div class="duel-round-status">
+          <p class="phase-chip">${phaseLabel(room)}</p>
+          ${duelTurnStatusHtml(room)}
+        </div>
+        <button class="danger duel-leave-button" data-action="leave">退出</button>
+      </div>
+      <section class="game-main">
+        <div class="stage-panel duel-stage-panel">
+          <h2>${duelStageTitle(room)}</h2>
+          <p class="muted">${turnDescription(room)}</p>
+        </div>
+        <section class="chat-panel">
+          <h2>チャットログ</h2>
+          <div class="chat-log">${messagesHtml()}</div>
+        </section>
+        ${panelHtml}
+      </section>
+    </div>
+  `;
+}
+
 function turnPanel() {
   const room = state.room;
   const isMyTurn = room.currentTurn?.participantId === room.myParticipant.id;
@@ -234,6 +264,7 @@ function turnPanel() {
       <section class="input-panel">
         <strong>待機中</strong>
         <p class="muted">現在は ${escapeHtml(currentTurnLabel)} のターンです。</p>
+        ${isDuelRoom(room) ? `<div class="compact-row input-meta-row">${turnCountdownHtml(room)}</div>` : ""}
       </section>
     `;
   }
@@ -243,18 +274,20 @@ function turnPanel() {
       <section class="input-panel">
         <label>質問する相手${targetSelectHtml()}</label>
         <label>質問<textarea id="turnText" maxlength="${MESSAGE_LIMIT}" placeholder="${MESSAGE_LIMIT}文字以内で質問"></textarea></label>
-        <div class="compact-row"><span id="counter" class="counter">0 / ${MESSAGE_LIMIT}</span><span class="muted">${TURN_SECONDS}秒ちょうどで送信されます</span></div>
+        <div class="compact-row input-meta-row"><span id="counter" class="counter">0 / ${MESSAGE_LIMIT}</span>${turnTimingHtml(room)}</div>
         <button class="primary turn-save-button" data-action="send-question">下書きを保存</button>
       </section>
     `;
   }
 
   if (room.status === "ROUND_3") {
+    const targetField = isDuelRoom(room) ? "" : `<label>AIだと思う人${targetSelectHtml()}</label>`;
+    const reasonLabel = isDuelRoom(room) ? "AI判定の理由" : "理由";
     return `
       <section class="input-panel">
-        <label>AIだと思う人${targetSelectHtml()}</label>
-        <label>理由<textarea id="turnText" maxlength="${MESSAGE_LIMIT}" placeholder="${MESSAGE_LIMIT}文字以内で理由を書く"></textarea></label>
-        <div class="compact-row"><span id="counter" class="counter">0 / ${MESSAGE_LIMIT}</span><span class="muted">${TURN_SECONDS}秒ちょうどで送信されます</span></div>
+        ${targetField}
+        <label>${reasonLabel}<textarea id="turnText" maxlength="${MESSAGE_LIMIT}" placeholder="${MESSAGE_LIMIT}文字以内で理由を書く"></textarea></label>
+        <div class="compact-row input-meta-row"><span id="counter" class="counter">0 / ${MESSAGE_LIMIT}</span>${turnTimingHtml(room)}</div>
         <button class="primary turn-save-button" data-action="send-final">下書きを保存</button>
       </section>
     `;
@@ -263,7 +296,7 @@ function turnPanel() {
   return `
     <section class="input-panel">
       <label>${room.status === "ROUND_1" ? "お題への回答" : "回答"}<textarea id="turnText" maxlength="${MESSAGE_LIMIT}" placeholder="${MESSAGE_LIMIT}文字以内で入力"></textarea></label>
-      <div class="compact-row"><span id="counter" class="counter">0 / ${MESSAGE_LIMIT}</span><span class="muted">${TURN_SECONDS}秒ちょうどで送信されます</span></div>
+      <div class="compact-row input-meta-row"><span id="counter" class="counter">0 / ${MESSAGE_LIMIT}</span>${turnTimingHtml(room)}</div>
       <button class="primary turn-save-button" data-action="${room.status === "ROUND_1" ? "send-round1" : "send-answer"}">下書きを保存</button>
     </section>
   `;
@@ -283,6 +316,7 @@ function votePanel() {
     <section class="input-panel">
       <h2>誰がAIだと思う？</h2>
       <p class="muted">${voted ? "投票済みです。結果を待っています。" : "自分以外の参加者に投票できます。"}</p>
+      ${isDuelRoom(room) ? `<div class="compact-row input-meta-row">${turnCountdownHtml(room)}</div>` : ""}
       <div class="vote-list">${buttons}</div>
     </section>
   `;
@@ -481,6 +515,16 @@ function avatar(label) {
 }
 
 function phaseLabel(room) {
+  if (isDuelRoom(room)) {
+    const duelLabels = {
+      ROUND_1: "ラウンド1 / 2：共通お題",
+      ROUND_3: "ラウンド2 / 2：AI判定",
+      VOTING: "投票",
+      RESULT: "結果",
+      CLOSED: "無効試合"
+    };
+    return duelLabels[room.status] ?? room.status;
+  }
   const labels = {
     ROUND_1: "ラウンド1 / 3：共通お題",
     ROUND_2: "ラウンド2 / 3：指名質問",
@@ -490,6 +534,28 @@ function phaseLabel(room) {
     CLOSED: "無効試合"
   };
   return labels[room.status] ?? room.status;
+}
+
+function duelTurnStatusHtml(room) {
+  const label = duelTurnLabel(room);
+  return label ? `<span class="turn-status">${label}</span>` : "";
+}
+
+function duelTurnLabel(room) {
+  if (!room.currentTurn) {
+    return "";
+  }
+  return room.currentTurn.participantId === room.myParticipant.id ? "自分のターン" : "相手のターン";
+}
+
+function duelStageTitle(room) {
+  const labels = {
+    ROUND_1: "お題への回答",
+    ROUND_2: room.currentTurn?.turnType === "DIRECTED_ANSWER" ? "質問への回答" : "質問",
+    ROUND_3: "AI判定",
+    VOTING: "投票"
+  };
+  return labels[room.status] ?? phaseLabel(room);
 }
 
 function turnHeadline(room) {
@@ -515,6 +581,9 @@ function turnDescription(room) {
     return `相手を1人選んで、${MESSAGE_LIMIT}文字以内で質問します。入力済みでも${TURN_SECONDS}秒ちょうどで送信されます。`;
   }
   if (room.status === "ROUND_3") {
+    if (isDuelRoom(room)) {
+      return `相手がAIかどうかの理由を${MESSAGE_LIMIT}文字以内で書きます。入力済みでも${TURN_SECONDS}秒ちょうどで送信されます。`;
+    }
     return `AIだと思う相手と理由を${MESSAGE_LIMIT}文字以内で出します。入力済みでも${TURN_SECONDS}秒ちょうどで送信されます。`;
   }
   return "";
@@ -527,6 +596,15 @@ function roleLabel(role) {
     AI: "AI"
   };
   return labels[role] ?? role;
+}
+
+function turnTimingHtml(room) {
+  const sendTiming = `<span class="muted">${TURN_SECONDS}秒ちょうどで送信されます</span>`;
+  return isDuelRoom(room) ? `${turnCountdownHtml(room)}${sendTiming}` : sendTiming;
+}
+
+function turnCountdownHtml(room) {
+  return `<span class="turn-countdown"><strong>残り時間</strong><span data-countdown>${remainingSeconds(room.phaseEndsAt)}秒</span></span>`;
 }
 
 function remainingSeconds(iso) {
@@ -630,9 +708,9 @@ document.addEventListener("click", async (event) => {
     } else if (action === "send-answer") {
       await sendTextAction("DIRECTED_ANSWER");
     } else if (action === "send-question") {
-      await sendTextAction("DIRECTED_QUESTION", document.querySelector("#targetSelect").value);
+      await sendTextAction("DIRECTED_QUESTION", selectedTargetParticipantId());
     } else if (action === "send-final") {
-      await sendTextAction("FINAL_SUSPICION", document.querySelector("#targetSelect").value);
+      await sendTextAction("FINAL_SUSPICION", selectedTargetParticipantId());
     } else if (action === "leave") {
       await roomAction("leave", {});
       await refresh();
@@ -667,6 +745,10 @@ async function sendTextAction(actionType, targetParticipantId = null) {
   showToast(`下書きを保存しました。${TURN_SECONDS}秒で送信されます。`);
 }
 
+function selectedTargetParticipantId() {
+  return document.querySelector("#targetSelect")?.value ?? null;
+}
+
 function scheduleDraftSave(delay = 180) {
   if (!state.room || state.room.currentTurn?.participantId !== state.room.myParticipant.id) {
     return;
@@ -677,7 +759,7 @@ function scheduleDraftSave(delay = 180) {
     if (!actionType) {
       return;
     }
-    const targetParticipantId = document.querySelector("#targetSelect")?.value ?? null;
+    const targetParticipantId = selectedTargetParticipantId();
     saveDraftAction(actionType, targetParticipantId, true).catch(() => {});
   }, delay);
 }

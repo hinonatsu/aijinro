@@ -448,6 +448,52 @@ body.home-view {
   gap: 12px;
 }
 
+.duel-game-layout {
+  display: grid;
+  gap: 12px;
+}
+
+.duel-game-top,
+.duel-round-status,
+.turn-status,
+.turn-countdown {
+  display: flex;
+  align-items: center;
+}
+
+.duel-game-top {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.duel-round-status {
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.turn-status {
+  min-height: 34px;
+  padding: 6px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--ink);
+  font-weight: 900;
+}
+
+.duel-leave-button {
+  flex: 0 0 auto;
+}
+
+.duel-stage-panel h2 {
+  margin-bottom: 6px;
+}
+
+.duel-stage-panel p {
+  margin-bottom: 0;
+}
+
 .room-view .topbar {
   margin-bottom: 12px;
 }
@@ -676,6 +722,10 @@ body.home-view {
   box-shadow: 0 16px 40px rgba(17, 19, 24, 0.14);
 }
 
+.duel-game-layout .game-main > .input-panel {
+  left: var(--shell-gutter);
+}
+
 .game-main > .input-panel > label,
 .game-main > .input-panel > h2,
 .game-main > .input-panel > strong,
@@ -738,6 +788,21 @@ body.home-view {
 .counter.over {
   color: var(--danger);
   font-weight: 900;
+}
+
+.input-meta-row {
+  align-items: center;
+}
+
+.turn-countdown {
+  gap: 6px;
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.turn-countdown strong {
+  color: var(--muted);
+  font-size: 0.82rem;
 }
 
 .vote-list {
@@ -812,6 +877,10 @@ body.home-view {
     left: 12px;
     right: 12px;
     bottom: 12px;
+  }
+
+  .duel-game-layout .game-main > .input-panel {
+    left: 12px;
   }
 
   .topbar {
