@@ -525,13 +525,149 @@ body.home-view {
 
 .duel-role-panel {
   position: relative;
-  padding-top: 62px;
+  width: min(760px, 100%);
+  margin: 0 auto;
+  padding: 28px;
+  display: grid;
+  gap: 18px;
 }
 
 .duel-role-leave {
   position: absolute;
-  top: 14px;
-  right: 14px;
+  top: 16px;
+  right: 16px;
+  min-height: 36px;
+  padding: 7px 12px;
+  color: var(--muted);
+  background: var(--panel);
+}
+
+.duel-role-leave:hover:not(:disabled) {
+  color: var(--ink);
+}
+
+.duel-stepper {
+  width: min(560px, calc(100% - 82px));
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.duel-step {
+  min-height: 32px;
+  padding: 5px 4px 7px;
+  border-bottom: 3px solid var(--line);
+  color: var(--muted);
+  text-align: center;
+  font-size: 0.82rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.duel-step.is-active {
+  border-color: var(--accent);
+  color: var(--ink);
+}
+
+.duel-role-copy {
+  max-width: 640px;
+  display: grid;
+  gap: 8px;
+}
+
+.duel-role-copy h2,
+.duel-role-copy p {
+  margin: 0;
+}
+
+.duel-role-copy h2 {
+  font-size: clamp(1.55rem, 3vw, 2.15rem);
+  line-height: 1.18;
+}
+
+.duel-role-copy .muted {
+  line-height: 1.7;
+}
+
+.duel-ready-list {
+  width: min(520px, 100%);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.duel-ready-row {
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.duel-ready-row + .duel-ready-row {
+  border-top: 1px solid var(--line);
+}
+
+.duel-ready-name {
+  font-weight: 900;
+}
+
+.duel-ready-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.duel-ready-row.is-ready .duel-ready-status {
+  color: var(--accent);
+}
+
+.duel-ready-icon {
+  width: 22px;
+  height: 22px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-size: 0.82rem;
+  line-height: 1;
+}
+
+.duel-ready-row:not(.is-ready) .duel-ready-icon {
+  border-color: #d4d4d4;
+  background: #eeeeee;
+}
+
+.duel-role-actions {
+  align-items: center;
+}
+
+.duel-role-actions .primary {
+  min-width: 184px;
+}
+
+.wait-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.7;
+  animation: wait-pulse 1000ms ease-in-out infinite;
+}
+
+@keyframes wait-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+    transform: scale(0.75);
+  }
+
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .duel-stage-panel h2 {
@@ -1278,6 +1414,29 @@ body.home-view {
     align-items: center;
     justify-content: space-between;
     gap: 6px;
+  }
+
+  .duel-role-panel {
+    padding: 54px 14px 16px;
+    gap: 14px;
+  }
+
+  .duel-role-leave {
+    top: 10px;
+    right: 10px;
+  }
+
+  .duel-stepper {
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .duel-ready-row {
+    min-height: 48px;
+  }
+
+  .duel-role-actions .primary {
+    width: 100%;
   }
 
   .vote-list,
