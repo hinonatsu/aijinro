@@ -486,6 +486,17 @@ body.home-view {
   flex: 0 0 auto;
 }
 
+.duel-role-panel {
+  position: relative;
+  padding-top: 62px;
+}
+
+.duel-role-leave {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+}
+
 .duel-stage-panel h2 {
   margin-bottom: 6px;
 }

@@ -180,8 +180,12 @@ function renderRoleReveal() {
     ? `<button class="primary" data-action="role-ack" ${ready ? "disabled" : ""}>${ready ? "ほかのプレイヤー待ち" : "確認して待つ"}</button>`
     : `<button class="primary" data-action="role-ack" ${ready ? "disabled" : ""}>${ready ? "ほかのプレイヤー待ち" : "確認して待つ"}</button>
         <button class="ghost" data-action="leave">退出</button>`;
+  const duelLeaveButtonHtml = isDuel
+    ? `<button class="danger duel-leave-button duel-role-leave" data-action="leave">退出</button>`
+    : "";
   app.innerHTML = `
-    <section class="stage-panel">
+    <section class="stage-panel ${isDuel ? "duel-role-panel" : ""}">
+      ${duelLeaveButtonHtml}
       ${roleHeaderHtml}
       <p>${escapeHtml(roleText)}</p>
       ${ready ? `<p class="phase-chip">確認済み。ほかのプレイヤー待ち ${readyText}</p>` : `<p class="muted">${waitingText}</p>`}
