@@ -216,7 +216,20 @@ body.home-view {
   min-height: 0;
   display: grid;
   place-items: center;
+  align-content: center;
+  grid-auto-rows: max-content;
+  gap: clamp(24px, 4vw, 42px);
   padding-bottom: 64px;
+}
+
+.home-view .view::before {
+  content: "";
+  display: block;
+  width: clamp(180px, 28vw, 360px);
+  aspect-ratio: 1;
+  border-radius: 24px;
+  background: url("/icon.png") center / contain no-repeat;
+  filter: drop-shadow(0 22px 36px rgba(17, 19, 24, 0.14));
 }
 
 .home-menu {
