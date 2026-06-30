@@ -43,6 +43,11 @@ export const RoomMode = Object.freeze({
   DUEL: "DUEL"
 });
 
+export const DuelJudgement = Object.freeze({
+  AI: "AI",
+  HUMAN: "HUMAN"
+});
+
 const TURN_MS = 30_000;
 const VOTE_MS = 15_000;
 const MESSAGE_LIMIT = 30;
@@ -273,6 +278,9 @@ export function submitVote(guestToken, roomId, targetParticipantId) {
   const user = authenticate(guestToken);
   const room = assertRoom(roomId);
   const voter = assertParticipant(room, user.id);
+  if (room.mode === RoomMode.DUEL) {
+    throw publicError("2人版では投票はありません。");
+  }
   if (room.status !== RoomStatus.VOTING) {
     throw publicError("現在は投票時間ではありません。");
   }
@@ -362,7 +370,7 @@ function createRoomFromUsers(users, options = {}) {
   const roomId = id("room");
   const mode = options.mode ?? RoomMode.GROUP;
   const isDuel = mode === RoomMode.DUEL;
-  const voteThreshold = isDuel ? 1 : 2;
+  const voteThreshold = isDuel ? null : 2;
   const displayNames = shuffle(DISPLAY_NAMES).slice(0, users.length + 1);
   const collaboratorUser = isDuel ? null : sample(users);
   const humanBase = users.map((user, index) => ({
@@ -409,6 +417,7 @@ function createRoomFromUsers(users, options = {}) {
     participants,
     messages: [],
     votes: [],
+    duelJudgement: null,
     reports: [],
     round: 0,
     turnType: null,
@@ -436,7 +445,7 @@ function createRoomFromUsers(users, options = {}) {
   addSystemMessage(
     room,
     isDuel
-      ? "相手と共通お題で話し、AI判定をして最後に投票します。"
+      ? "相手と共通お題で話し、最後にAI判定を提出します。"
       : "3人が揃いました。AI参加者を追加して試合を開始します。"
   );
   store.rooms.set(room.id, room);
@@ -495,7 +504,10 @@ function startRound3(room) {
   clearRoomTimers(room);
   room.status = RoomStatus.ROUND_3;
   room.round = 3;
-  room.round3Order = shuffle(room.participants.map((participant) => participant.id));
+  room.round3Order =
+    room.mode === RoomMode.DUEL
+      ? humanParticipants(room).map((participant) => participant.id)
+      : shuffle(room.participants.map((participant) => participant.id));
   room.round3Index = 0;
   addSystemMessage(
     room,
@@ -506,6 +518,10 @@ function startRound3(room) {
 
 function advanceRound3(room) {
   if (room.round3Index >= room.round3Order.length) {
+    if (room.mode === RoomMode.DUEL) {
+      finalizeDuelJudgement(room);
+      return;
+    }
     startVoting(room);
     return;
   }
@@ -642,6 +658,7 @@ function createEmptyDraft(room, participantId, turnType) {
     actionType: actionTypeForTurn(room, turnType),
     text: "",
     targetParticipantId: target?.id ?? null,
+    duelJudgement: null,
     updatedAt: Date.now()
   };
 }
@@ -688,12 +705,18 @@ function saveTurnDraft(room, participant, payload) {
     targetParticipantId = room.currentQuestion?.askerId ?? null;
   }
 
+  const duelJudgement =
+    room.mode === RoomMode.DUEL && payload.actionType === "FINAL_SUSPICION"
+      ? normalizeDuelJudgement(payload.duelJudgement)
+      : null;
+
   room.currentDraft = {
     participantId: participant.id,
     turnType: room.turnType,
     actionType: payload.actionType,
     text,
     targetParticipantId,
+    duelJudgement,
     updatedAt: Date.now()
   };
 }
@@ -751,6 +774,25 @@ async function finalizeCurrentTurn(room) {
   if (room.status === RoomStatus.ROUND_3) {
     const target = participantById(room, draft.targetParticipantId) ?? chooseValidAITarget(room, participant, null);
     const reason = draft.text || "理由なし";
+    if (room.mode === RoomMode.DUEL) {
+      const judgement = normalizeDuelJudgement(draft.duelJudgement);
+      const judgementLabel =
+        judgement === DuelJudgement.AI ? "AI" : judgement === DuelJudgement.HUMAN ? "人間" : "未選択";
+      const finalDraft = {
+        ...draft,
+        text: `判定：相手は${judgementLabel}\n理由：${reason}`
+      };
+      await publishDraft(room, participant, finalDraft, {
+        round: 3,
+        targetParticipantId: target.id,
+        skipLengthCheck: true
+      });
+      participant.finalSuspectId = target.id;
+      room.duelJudgement = createDuelJudgement(room, participant, target, judgement, reason);
+      finalizeDuelJudgement(room);
+      emitChange();
+      return;
+    }
     const targetLabel = room.mode === RoomMode.DUEL ? "相手" : target.displayName;
     const finalDraft = {
       ...draft,
@@ -796,6 +838,16 @@ function normalizeFinalText(rawText) {
   return text;
 }
 
+function normalizeDuelJudgement(value) {
+  if (value == null || value === "") {
+    return null;
+  }
+  if (Object.values(DuelJudgement).includes(value)) {
+    return value;
+  }
+  throw publicError("AI判定を選び直してください。");
+}
+
 function consumeCurrentTurn(room) {
   if (room.status === RoomStatus.ROUND_1) {
     advanceRound1(room);
@@ -824,6 +876,56 @@ function consumeCurrentTurn(room) {
     room.round3Index += 1;
     advanceRound3(room);
   }
+}
+
+function createDuelJudgement(room, participant, target, judgement, reason, auto = false) {
+  const expectedJudgement = target?.isAI ? DuelJudgement.AI : DuelJudgement.HUMAN;
+  return {
+    id: id("judgement"),
+    participantId: participant?.id ?? null,
+    targetParticipantId: target?.id ?? null,
+    judgement,
+    expectedJudgement,
+    correct: Boolean(judgement && judgement === expectedJudgement),
+    reason: reason || "理由なし",
+    auto,
+    createdAt: Date.now()
+  };
+}
+
+function finalizeDuelJudgement(room) {
+  clearRoomTimers(room);
+  const ai = room.participants.find((participant) => participant.isAI);
+  const human = humanParticipants(room)[0] ?? null;
+  const fallbackTarget = room.participants.find((participant) => participant.id !== human?.id) ?? ai;
+  const judgement =
+    room.duelJudgement ?? createDuelJudgement(room, human, fallbackTarget, null, "理由なし", true);
+  room.duelJudgement = judgement;
+
+  const winnerTeam = judgement.correct ? Team.HUMAN : Team.AI;
+  room.status = RoomStatus.RESULT;
+  room.round = 0;
+  room.turnType = null;
+  room.currentTurnParticipantId = null;
+  room.phaseEndsAt = null;
+  room.winnerTeam = winnerTeam;
+  room.endedAt = Date.now();
+  room.result = {
+    winnerTeam,
+    aiParticipantId: ai.id,
+    collaboratorParticipantId: null,
+    aiVotes: null,
+    voteThreshold: null,
+    votes: [],
+    duelJudgement: { ...judgement }
+  };
+  updateStats(room);
+  addSystemMessage(
+    room,
+    judgement.correct
+      ? "AI判定に成功し、人間陣営の勝利です。"
+      : "AI判定に失敗したため、AI陣営の勝利です。"
+  );
 }
 
 function finalizeVotes(room) {
@@ -887,8 +989,12 @@ function updateStats(room) {
       if (room.winnerTeam === Team.HUMAN) {
         stats.citizenWins += 1;
       }
+      const duelJudgement = room.result?.duelJudgement;
       const vote = room.votes.find((item) => item.voterParticipantId === participant.id);
-      if (vote?.targetParticipantId === ai.id) {
+      if (
+        (room.mode === RoomMode.DUEL && duelJudgement?.participantId === participant.id && duelJudgement.correct) ||
+        (room.mode !== RoomMode.DUEL && vote?.targetParticipantId === ai.id)
+      ) {
         stats.correctAIVotes += 1;
       }
     }
@@ -903,6 +1009,7 @@ function updateStats(room) {
 
 function sanitizeRoomForParticipant(room, viewer) {
   const resultVisible = [RoomStatus.RESULT, RoomStatus.CLOSED].includes(room.status);
+  const voteThreshold = room.mode === RoomMode.DUEL ? null : room.voteThreshold ?? 2;
   const knownAI =
     viewer.role === Role.AI_COLLABORATOR && !resultVisible
       ? room.participants.find((participant) => participant.isAI)
@@ -922,7 +1029,7 @@ function sanitizeRoomForParticipant(room, viewer) {
   return {
     id: room.id,
     mode: room.mode ?? RoomMode.GROUP,
-    voteThreshold: room.voteThreshold ?? 2,
+    voteThreshold,
     status: room.status,
     topicPrompt: room.topicPrompt,
     round: room.round,
@@ -934,7 +1041,7 @@ function sanitizeRoomForParticipant(room, viewer) {
       role: viewer.role,
       team: viewer.team,
       roleReady: viewer.roleReady,
-      hasVoted: room.votes.some((vote) => vote.voterParticipantId === viewer.id)
+      hasVoted: room.mode !== RoomMode.DUEL && room.votes.some((vote) => vote.voterParticipantId === viewer.id)
     },
     readiness: {
       humanCount: humanParticipants(room).length,
@@ -991,7 +1098,8 @@ function sanitizeRoomForParticipant(room, viewer) {
           aiParticipantId: room.result.aiParticipantId,
           collaboratorParticipantId: room.result.collaboratorParticipantId,
           aiVotes: room.result.aiVotes,
-          voteThreshold: room.result.voteThreshold ?? room.voteThreshold ?? 2
+          voteThreshold: room.result.voteThreshold ?? voteThreshold,
+          duelJudgement: room.result.duelJudgement ? { ...room.result.duelJudgement } : null
         }
       : null,
     reportsCount: room.reports.length

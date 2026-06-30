@@ -819,6 +819,7 @@ body.home-view {
 }
 
 .game-main > .input-panel > label,
+.game-main > .input-panel > fieldset,
 .game-main > .input-panel > h2,
 .game-main > .input-panel > strong,
 .game-main > .input-panel > p,
@@ -826,13 +827,43 @@ body.home-view {
   grid-column: 1 / -1;
 }
 
-.game-main > .input-panel > label {
+.game-main > .input-panel > label,
+.game-main > .input-panel > fieldset {
   display: grid;
   gap: 6px;
   min-width: 0;
   color: var(--muted);
   font-size: 0.88rem;
   font-weight: 700;
+}
+
+.game-main > .input-panel > fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+
+.judgement-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.judgement-option {
+  min-height: 42px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.judgement-option input {
+  width: auto;
+  margin: 0;
 }
 
 .game-main > .input-panel > h2,
@@ -1270,7 +1301,8 @@ body.home-view {
     gap: 6px;
   }
 
-  .vote-list {
+  .vote-list,
+  .judgement-options {
     grid-template-columns: 1fr;
   }
 

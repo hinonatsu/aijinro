@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   createGuestSession,
+  DuelJudgement,
   getRoomState,
   joinQueue,
   resetGame,
@@ -40,13 +41,13 @@ test("1:1練習は待機せず人間1人とAI1体の部屋を作成する", () =
 
   assert.equal(match.status, "matched");
   assert.equal(room.mode, RoomMode.DUEL);
-  assert.equal(room.voteThreshold, 1);
+  assert.equal(room.voteThreshold, null);
   assert.equal(room.participants.length, 2);
   assert.equal(room.participants.filter((participant) => participant.isAI).length, 1);
   assert.equal(room.participants.filter((participant) => participant.role === Role.CITIZEN).length, 1);
   assert.equal(room.participants.filter((participant) => participant.role === Role.AI_COLLABORATOR).length, 0);
   assert.equal(state.mode, RoomMode.DUEL);
-  assert.equal(state.voteThreshold, 1);
+  assert.equal(state.voteThreshold, null);
 });
 
 test("1:1練習は指名質問をスキップして最終推理に進む", async () => {
@@ -280,18 +281,49 @@ test("AIに2票入ると人間陣営が勝つ", () => {
   assert.equal(room.result.aiVotes, 2);
 });
 
-test("1:1練習はAIに1票入ると人間陣営が勝つ", () => {
+test("1:1練習はAI判定後に投票を挟まず結果へ進む", async () => {
+  const user = createGuestSession();
+  const match = startDuelMatch(user.guestToken);
+  const room = testOnly.store.rooms.get(match.roomId);
+  const human = room.participants.find((participant) => !participant.isAI);
+  const ai = room.participants.find((participant) => participant.isAI);
+  room.status = RoomStatus.ROUND_3;
+  room.round = 3;
+  room.round3Order = [human.id];
+  room.round3Index = 0;
+  testOnly.setTurn(room, human.id, "FINAL_SUSPICION");
+
+  await submitAction(user.guestToken, room.id, {
+    actionType: "FINAL_SUSPICION",
+    text: "返答が機械っぽい",
+    duelJudgement: DuelJudgement.AI
+  });
+
+  await testOnly.finalizeCurrentTurn(room);
+
+  assert.equal(room.status, RoomStatus.RESULT);
+  assert.equal(room.result.winnerTeam, "HUMAN");
+  assert.equal(room.result.aiParticipantId, ai.id);
+  assert.equal(room.result.aiVotes, null);
+  assert.equal(room.result.voteThreshold, null);
+  assert.equal(room.result.collaboratorParticipantId, null);
+  assert.equal(room.result.duelJudgement.judgement, DuelJudgement.AI);
+  assert.equal(room.result.duelJudgement.correct, true);
+  assert.equal(room.votes.length, 0);
+
+  const state = getRoomState(user.guestToken, room.id);
+  assert.equal(state.result.duelJudgement.judgement, DuelJudgement.AI);
+  assert.equal(state.result.duelJudgement.correct, true);
+  assert.equal(state.result.voteThreshold, null);
+  assert.equal(state.votes.length, 0);
+});
+
+test("1:1練習では投票APIを使えない", () => {
   const user = createGuestSession();
   const match = startDuelMatch(user.guestToken);
   const room = testOnly.store.rooms.get(match.roomId);
   const ai = room.participants.find((participant) => participant.isAI);
   room.status = RoomStatus.VOTING;
 
-  submitVote(user.guestToken, room.id, ai.id);
-
-  assert.equal(room.status, RoomStatus.RESULT);
-  assert.equal(room.result.winnerTeam, "HUMAN");
-  assert.equal(room.result.aiVotes, 1);
-  assert.equal(room.result.voteThreshold, 1);
-  assert.equal(room.result.collaboratorParticipantId, null);
+  assert.throws(() => submitVote(user.guestToken, room.id, ai.id), /2人版では投票/);
 });

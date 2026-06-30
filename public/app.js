@@ -202,7 +202,7 @@ function renderRoom() {
     renderRoleReveal();
     return;
   }
-  if (room.status === "VOTING") {
+  if (room.status === "VOTING" && !isDuelRoom(room)) {
     renderGameShell(votePanel());
     return;
   }
@@ -220,7 +220,7 @@ function renderRoleReveal() {
     state.room.myParticipant.role === "AI_COLLABORATOR"
       ? `AIは「${state.room.knownAI?.displayName ?? "不明"}」です。AIに${voteThreshold}票以上入らないよう議論を誘導してください。`
       : isDuel
-        ? "相手と共通お題で話し、AI判定をして最後に投票します。"
+        ? "相手と共通お題で話し、最後にAI判定を提出します。"
         : "この4人の中にAIが1体います。会話からAIを見抜いてください。";
   const ready = state.room.myParticipant.roleReady;
   const readyText = `${state.room.readiness?.roleReadyCount ?? 0} / ${state.room.readiness?.humanCount ?? 3}`;
@@ -338,10 +338,13 @@ function turnPanel() {
   }
 
   if (room.status === "ROUND_3") {
-    const targetField = isDuelRoom(room) ? "" : `<label>AIだと思う人${targetSelectHtml()}</label>`;
-    const reasonLabel = isDuelRoom(room) ? "AI判定の理由" : "理由";
+    const isDuel = isDuelRoom(room);
+    const judgementField = isDuel ? duelJudgementFieldHtml() : "";
+    const targetField = isDuel ? "" : `<label>AIだと思う人${targetSelectHtml()}</label>`;
+    const reasonLabel = isDuel ? "AI判定の理由" : "理由";
     return `
       <section class="input-panel">
+        ${judgementField}
         ${targetField}
         <label>${reasonLabel}<textarea id="turnText" maxlength="${MESSAGE_LIMIT}" placeholder="${MESSAGE_LIMIT}文字以内で理由を書く"></textarea></label>
         <div class="compact-row input-meta-row"><span id="counter" class="counter">0 / ${MESSAGE_LIMIT}</span>${turnTimingHtml(room)}</div>
@@ -393,21 +396,25 @@ function renderResult() {
       : room.result?.winnerTeam === "HUMAN"
         ? "人間陣営の勝利"
         : "AI陣営の勝利";
+  const resultSummaryHtml = room.result
+    ? isDuel
+      ? duelResultSummaryHtml(room, aiText)
+      : `<p>${aiText}${collaboratorText}</p>
+         <p>AIに入った票：${room.result.aiVotes}票 / 必要：${voteThreshold}票</p>`
+    : "";
+  const resultDetailsHtml = isDuel
+    ? duelJudgementResultHtml(room)
+    : `<h3>投票結果</h3>
+       <div class="participant-list">
+         ${room.votes.map((vote) => `<div class="participant"><span></span><span>${escapeHtml(voteLabel(vote))}</span><span class="badge">${vote.auto ? "自動" : "投票"}</span></div>`).join("")}
+       </div>`;
   app.innerHTML = `
     <section class="result-panel">
       <p class="phase-chip">結果発表</p>
       <h2>${winner}</h2>
-      ${
-        room.result
-          ? `<p>${aiText}${collaboratorText}</p>
-             <p>AIに入った票：${room.result.aiVotes}票 / 必要：${voteThreshold}票</p>`
-          : ""
-      }
+      ${resultSummaryHtml}
       <div class="participant-list">${participantsHtml()}</div>
-      <h3>投票結果</h3>
-      <div class="participant-list">
-        ${room.votes.map((vote) => `<div class="participant"><span></span><span>${escapeHtml(voteLabel(vote))}</span><span class="badge">${vote.auto ? "自動" : "投票"}</span></div>`).join("")}
-      </div>
+      ${resultDetailsHtml}
       <section class="chat-panel">
         <h3>チャットログ</h3>
         <div class="chat-log" data-chat-log>${messagesHtml()}</div>
@@ -518,6 +525,24 @@ function targetSelectHtml() {
   `;
 }
 
+function duelJudgementFieldHtml() {
+  return `
+    <fieldset class="judgement-field">
+      <legend>相手の判定</legend>
+      <div class="judgement-options">
+        <label class="judgement-option">
+          <input type="radio" name="duelJudgement" value="AI" />
+          <span>AIだと思う</span>
+        </label>
+        <label class="judgement-option">
+          <input type="radio" name="duelJudgement" value="HUMAN" />
+          <span>人間だと思う</span>
+        </label>
+      </div>
+    </fieldset>
+  `;
+}
+
 function isDuelRoom(room = state.room) {
   return room?.mode === "DUEL";
 }
@@ -565,6 +590,40 @@ function voteLabel(vote) {
   return `${voter} → ${target}`;
 }
 
+function duelResultSummaryHtml(room, aiText) {
+  const judgement = room.result?.duelJudgement;
+  const resultText = judgement?.correct ? "AI判定に成功しました。" : "AI判定に失敗しました。";
+  return `<p>${aiText}</p><p>${resultText}</p>`;
+}
+
+function duelJudgementResultHtml(room) {
+  const judgement = room.result?.duelJudgement;
+  if (!judgement) {
+    return "";
+  }
+  const judgementText = `あなたの判定：${duelJudgementLabel(judgement.judgement)}`;
+  return `
+    <h3>判定結果</h3>
+    <div class="participant-list">
+      <div class="participant">
+        <span></span>
+        <span>${escapeHtml(judgementText)}</span>
+        <span class="badge">${judgement.correct ? "成功" : "失敗"}</span>
+      </div>
+    </div>
+  `;
+}
+
+function duelJudgementLabel(value) {
+  if (value === "AI") {
+    return "相手はAI";
+  }
+  if (value === "HUMAN") {
+    return "相手は人間";
+  }
+  return "未判定";
+}
+
 function avatar(label) {
   return `<span class="avatar">${escapeHtml(Array.from(label)[0] ?? "?")}</span>`;
 }
@@ -574,7 +633,6 @@ function phaseLabel(room) {
     const duelLabels = {
       ROUND_1: "ラウンド1 / 2：共通お題",
       ROUND_3: "ラウンド2 / 2：AI判定",
-      VOTING: "投票",
       RESULT: "結果",
       CLOSED: "無効試合"
     };
@@ -607,8 +665,7 @@ function duelStageTitle(room) {
   const labels = {
     ROUND_1: "お題への回答",
     ROUND_2: room.currentTurn?.turnType === "DIRECTED_ANSWER" ? "質問への回答" : "質問",
-    ROUND_3: "AI判定",
-    VOTING: "投票"
+    ROUND_3: "AI判定"
   };
   return labels[room.status] ?? phaseLabel(room);
 }
@@ -637,7 +694,7 @@ function turnDescription(room) {
   }
   if (room.status === "ROUND_3") {
     if (isDuelRoom(room)) {
-      return `相手がAIかどうかの理由を${MESSAGE_LIMIT}文字以内で書きます。入力済みでも${TURN_SECONDS}秒ちょうどで送信されます。`;
+      return `相手がAIか人間かを選び、理由を${MESSAGE_LIMIT}文字以内で書きます。入力済みでも${TURN_SECONDS}秒ちょうどで送信されます。`;
     }
     return `AIだと思う相手と理由を${MESSAGE_LIMIT}文字以内で出します。入力済みでも${TURN_SECONDS}秒ちょうどで送信されます。`;
   }
@@ -734,7 +791,7 @@ document.addEventListener("input", (event) => {
 });
 
 document.addEventListener("change", (event) => {
-  if (event.target.id === "targetSelect") {
+  if (event.target.id === "targetSelect" || event.target.name === "duelJudgement") {
     scheduleDraftSave(0);
   }
 });
@@ -801,6 +858,10 @@ function selectedTargetParticipantId() {
   return document.querySelector("#targetSelect")?.value ?? null;
 }
 
+function selectedDuelJudgement() {
+  return document.querySelector('input[name="duelJudgement"]:checked')?.value ?? null;
+}
+
 function scheduleDraftSave(delay = 180) {
   if (!state.room || state.room.currentTurn?.participantId !== state.room.myParticipant.id) {
     return;
@@ -843,6 +904,7 @@ async function saveDraftAction(actionType, targetParticipantId = null, silent = 
       guestToken: state.token,
       actionType,
       targetParticipantId,
+      duelJudgement: selectedDuelJudgement(),
       text
     }
   });
@@ -885,6 +947,11 @@ function resultShareText() {
   }
   const ai = room.participants.find((participant) => participant.id === room.result.aiParticipantId);
   const winner = room.result.winnerTeam === "HUMAN" ? "人間陣営" : "AI陣営";
+  if (isDuelRoom(room)) {
+    const judgement = room.result.duelJudgement;
+    const outcome = judgement?.correct ? "判定成功" : "判定失敗";
+    return `AI判定 結果：${outcome}。AIは${participantLabel(ai)}。判定は${duelJudgementLabel(judgement?.judgement)}でした。`;
+  }
   const voteThreshold = room.result.voteThreshold ?? room.voteThreshold ?? 2;
   const aiText = isDuelRoom(room) ? participantLabel(ai) : `「${ai?.displayName}」`;
   return `AI人狼 結果：${winner}の勝利。AIは${aiText}。AIへの票は${room.result.aiVotes}/${voteThreshold}票でした。`;
