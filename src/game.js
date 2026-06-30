@@ -175,6 +175,7 @@ export function joinQueue(guestToken) {
   }
 
   removeFromDuelQueue(user.id);
+  removeFromPretenderQueue(user.id);
   if (!store.queue.includes(user.id)) {
     user.queuedAt = Date.now();
     store.queue.push(user.id);
@@ -368,7 +369,7 @@ export function submitVote(guestToken, roomId, targetParticipantId) {
   const room = assertRoom(roomId);
   const voter = assertParticipant(room, user.id);
   if (room.mode === RoomMode.DUEL) {
-    throw publicError("2人版では投票はありません。");
+    throw publicError("1:1では投票はありません。");
   }
   if (room.status !== RoomStatus.VOTING) {
     throw publicError("現在は投票時間ではありません。");
@@ -654,7 +655,7 @@ function startRound3(room) {
   room.round3Index = 0;
   addSystemMessage(
     room,
-    room.mode === RoomMode.DUEL ? "ラウンド2：AI判定を始めます。" : "ラウンド3：最終推理を始めます。"
+    room.mode === RoomMode.DUEL ? "ラウンド2：正体判定を始めます。" : "ラウンド3：最終推理を始めます。"
   );
   if (!room.round3Order.length) {
     finalizeDuelJudgement(room);
@@ -1015,7 +1016,7 @@ function normalizeDuelJudgement(value) {
   if (Object.values(DuelJudgement).includes(value)) {
     return value;
   }
-  throw publicError("AI判定を選び直してください。");
+  throw publicError("正体判定を選び直してください。");
 }
 
 function consumeCurrentTurn(room) {

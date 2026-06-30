@@ -460,5 +460,5 @@ test("1:1練習では投票APIを使えない", () => {
   const ai = room.participants.find((participant) => participant.isAI);
   room.status = RoomStatus.VOTING;
 
-  assert.throws(() => submitVote(user.guestToken, room.id, ai.id), /2人版では投票/);
+  assert.throws(() => submitVote(user.guestToken, room.id, ai.id), /1:1では投票/);
 });
