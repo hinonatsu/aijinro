@@ -37,7 +37,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && url.pathname === "/healthz") {
       return sendJson(res, {
         status: "ok",
-        service: "ai-werewolf-mvp",
+        service: "ai-judgement-game-mvp",
         uptimeSeconds: Math.round(process.uptime())
       });
     }
@@ -68,7 +68,7 @@ gameEvents.on("change", () => {
 });
 
 server.listen(port, () => {
-  console.log(`AI人狼 MVP running at http://localhost:${port}`);
+  console.log(`AI判定ゲーム MVP running at http://localhost:${port}`);
 });
 
 async function handleApi(req, res, url) {

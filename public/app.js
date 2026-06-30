@@ -1123,7 +1123,7 @@ function isSessionError(error) {
 function resultShareText() {
   const room = state.room;
   if (!room?.result) {
-    return "AI人狼の試合結果";
+    return "AI判定ゲームの試合結果";
   }
   const ai = room.participants.find((participant) => participant.id === room.result.aiParticipantId);
   const winner = room.result.winnerTeam === "HUMAN" ? "人間陣営" : "AI陣営";
@@ -1136,7 +1136,7 @@ function resultShareText() {
   }
   const voteThreshold = room.result.voteThreshold ?? room.voteThreshold ?? 2;
   const aiText = isDuelRoom(room) ? participantLabel(ai) : `「${ai?.displayName}」`;
-  return `AI人狼 結果：${winner}の勝利。AIは${aiText}。AIへの票は${room.result.aiVotes}/${voteThreshold}票でした。`;
+  return `AI判定ゲーム 結果：${winner}の勝利。AIは${aiText}。AIへの票は${room.result.aiVotes}/${voteThreshold}票でした。`;
 }
 
 function escapeHtml(value) {

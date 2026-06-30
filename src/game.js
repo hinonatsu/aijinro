@@ -204,6 +204,7 @@ export function startPretenderMatch(guestToken) {
   }
 
   removeFromQueue(user.id);
+  removeFromDuelQueue(user.id);
   const waitingSpotter = takeFirstQueuedSpotter();
   if (waitingSpotter) {
     const room = createDuelRoom([
@@ -214,7 +215,6 @@ export function startPretenderMatch(guestToken) {
     return { status: "matched", roomId: room.id, mode: room.mode };
   }
 
-  removeFromDuelQueue(user.id);
   const existingEntry = store.pretenderQueue.find((entry) => entry.userId === user.id);
   if (existingEntry) {
     return { status: "queued", mode: RoomMode.DUEL, duelRole: DuelRole.PRETENDER, resolveAt: null };
@@ -243,6 +243,7 @@ export function startSpotterMatch(guestToken) {
   }
 
   removeFromQueue(user.id);
+  removeFromPretenderQueue(user.id);
   const waitingPretender = takeFirstQueuedPretender();
   if (waitingPretender) {
     const room = createDuelRoom([
@@ -253,7 +254,6 @@ export function startSpotterMatch(guestToken) {
     return { status: "matched", roomId: room.id, mode: room.mode };
   }
 
-  removeFromPretenderQueue(user.id);
   const existingEntry = store.duelQueue.find((entry) => entry.userId === user.id);
   if (existingEntry) {
     return {
