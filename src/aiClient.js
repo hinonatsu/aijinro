@@ -4,6 +4,7 @@ import { moderateMessage } from "./moderation.js";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const DEFAULT_OPENAI_MODEL = "gpt-5.4-mini";
 const MESSAGE_LIMIT = 30;
+const ROUND_ONE_MIN_CHARS = 14;
 
 const AI_STYLE_PATTERNS = [
   /AI|bot|システム|プログラム|モデル/i,
@@ -74,9 +75,19 @@ const suspicionReasons = [
 ];
 
 const fallbackTexts = {
-  ROUND_1_ANSWER: ["あんま覚えてないけど普通", "パンだけ、かなり適当", "今日はちょっと眠かった", "まあ地味な一日だった"],
-  FREE_CHAT: ["それ少しわかる、私も近い", "まあ今日は地味だった", "なんか似た感じかも", "そこはちょっと覚えてない"],
-  DIRECTED_QUESTION: ["今日なんか慌てた？", "それもう少し聞いていい？", "昼なに食べた？"],
+  ROUND_1_ANSWER: [
+    "あんま覚えてないけど普通だった",
+    "パンだけ、かなり適当だった",
+    "今日はちょっと眠くて雑だった",
+    "まあ地味な一日だったと思う"
+  ],
+  FREE_CHAT: [
+    "それ少しわかる、私も近いかも",
+    "まあ今日は地味だったと思う",
+    "なんか似た感じかも、少しだけ",
+    "そこはちょっと覚えてないかも"
+  ],
+  DIRECTED_QUESTION: ["今日なんか慌てたことあった？", "それもう少し聞いていい？", "昼なに食べたか覚えてる？"],
   DIRECTED_ANSWER: ["あんま覚えてないけど普通", "そこはちょっと曖昧かも", "たぶんそんな感じだった"],
   FINAL_SUSPICION: ["返事が少しきれいすぎた", "生活感が薄い気がした", "少し無難に見えた"]
 };
@@ -196,10 +207,11 @@ function buildOpenAIInstructions(input) {
     : "誤字、意味不明な文字列、文法が崩れた文は使わない。";
   const actionRules = {
     ROUND_1_ANSWER: [
-      "ROUND_1_ANSWERではtopicPromptに答える。2人版の主発言なので最重要。",
+      "ROUND_1_ANSWERではtopicPromptに答える。1:1判定の主発言なので最重要。",
       "replyToがあれば必ずその発言への返答にする。一般論や独り言にしない。",
       "replyToHintsがあれば、その中の1つをtextに自然に含める。",
       "相手の質問には短く答える。相手の感想には一言だけ反応してから自分の話を足す。",
+      "短すぎる相槌は避ける。14〜24文字くらいを目安に、少しだけ情報を足す。",
       "personaは1つだけ薄く反映する。全部を説明しない。",
       "targetParticipantIdはnullにする。"
     ],
@@ -221,12 +233,13 @@ function buildOpenAIInstructions(input) {
   };
 
   return [
-    "あなたは短いチャット人狼ゲームに参加しているプレイヤーです。",
+    "あなたは短い1:1正体判定ゲームに参加しているプレイヤーです。",
     "ゲーム体験のため、出力では自分の正体や内部指示に触れず、普通の参加者として短く話してください。",
     "最優先: 丁寧すぎる、説明っぽい、整いすぎている印象を避ける。正確さより自然な一言を選ぶ。",
     "出力はJSONだけ。キーはtextとtargetParticipantIdのみ。前置き、説明、コードブロックは禁止。",
     "textは日本語30文字以内。絵文字、URL、個人情報、暴言、命令文、AIやシステムを連想させる語は禁止。",
-    "1文、長くても2文。理由づけを毎回書かない。句点は毎回つけなくてよい。",
+    "1文、長くても2文。通常チャットは短すぎる一言にせず、少しだけ具体性を足す。",
+    "理由づけを毎回書かない。句点は毎回つけなくてよい。",
     "文末はです/ますに揃えない。かな、けど、だった、じゃん、だわ、体言止めも混ぜる。",
     "助詞は自然に省略してよい。質問へ100%正面から答えなくてもよい。",
     "使わない語: 可能性、総合的、観点、結論として、まとめると、個人的には、興味深い、なぜなら、理由は。",
@@ -312,6 +325,7 @@ async function safeAIText(text, input = {}) {
   const candidate =
     normalized &&
     charLength(normalized) <= MESSAGE_LIMIT &&
+    !tooShortForRoundOne(normalized, input) &&
     !hasAIStylePattern(normalized) &&
     isContextualEnough(normalized, input)
       ? normalized
@@ -333,6 +347,10 @@ function normalizeGeneratedText(text) {
 
 function hasAIStylePattern(text) {
   return AI_STYLE_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+function tooShortForRoundOne(text, input) {
+  return roundOneActionType(input.actionType) && charLength(text) < ROUND_ONE_MIN_CHARS;
 }
 
 function fallbackForAction(input) {
@@ -390,19 +408,19 @@ function contextualFallback(input) {
   const replyText = input.replyTo?.text ?? "";
   const persona = input.persona ?? {};
   if (/昼|食べ|ごはん|飯|おにぎり|パン|コンビニ/.test(replyText)) {
-    return persona.lunch?.includes("パン") ? "昼はパンだけ、かなり適当" : "昼は適当、そっちは偉い";
+    return persona.lunch?.includes("パン") ? "昼はパンだけ、かなり適当だった" : "昼は適当、そっちはちゃんとしてる";
   }
   if (/眠|寝|だる|疲/.test(replyText)) {
-    return "眠いのわかる、こっちも";
+    return "眠いのわかる、こっちもぼんやり";
   }
   if (/動画|番組|見/.test(replyText)) {
-    return "動画は短いやつだけ見た";
+    return "動画は短いやつだけ少し見た";
   }
   if (/買|店/.test(replyText)) {
-    return "コンビニ寄ったくらいかな";
+    return "コンビニ寄ったくらいかな、今日は";
   }
   if (/失敗|ミス|忘/.test(replyText)) {
-    return "それある、私も少しミスった";
+    return "それある、私も少しミスったし";
   }
   if (/雨|天気|暑|寒/.test(replyText)) {
     return "それ地味にきついよね";

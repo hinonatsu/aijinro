@@ -84,7 +84,7 @@ test("最終推理ではOpenAIの疑い先と理由を返す", async () => {
   assert.equal(output.text, "AIだと思う人：すずめ\n理由：返しが少し薄い");
 });
 
-test("2人版チャットでは人間らしさ指示を送り、疑い先をnullにする", async () => {
+test("1:1判定チャットでは人間らしさ指示を送り、疑い先をnullにする", async () => {
   let request = null;
   process.env.OPENAI_API_KEY = "test-key";
   globalThis.fetch = async (url, options) => {
@@ -119,7 +119,8 @@ test("2人版チャットでは人間らしさ指示を送り、疑い先をnull
   assert.deepEqual(input.replyTo, { displayName: "みかん", text: "昼はおにぎり" });
   assert.deepEqual(input.replyToHints, ["昼", "おにぎり"]);
   assert.equal(output.targetParticipantId, null);
-  assert.equal(output.text, "昼はパンだけ、かなり適当");
+  assert.equal(output.text, "昼はパンだけ、かなり適当だった");
+  assert.ok(Array.from(output.text).length >= 14);
   assert.ok(Array.from(output.text).length <= 30);
 });
 
@@ -133,8 +134,9 @@ test("モックAIも直前の相手発言に寄せて返す", async () => {
     replyTo: { displayName: "みかん", text: "眠くて昼もぼんやりしてた" }
   });
 
-  assert.equal(output.text, "昼はパンだけ、かなり適当");
+  assert.equal(output.text, "昼はパンだけ、かなり適当だった");
   assert.equal(output.targetParticipantId, undefined);
+  assert.ok(Array.from(output.text).length >= 14);
   assert.ok(Array.from(output.text).length <= 30);
 });
 
