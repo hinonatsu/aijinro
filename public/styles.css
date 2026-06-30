@@ -364,8 +364,7 @@ body.home-view {
 .action-row,
 .compact-row,
 .participant-list,
-.vote-list,
-.report-actions {
+.vote-list {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
@@ -774,20 +773,6 @@ body.home-view {
   color: var(--danger);
 }
 
-.message .ghost[data-report-message],
-.participant .ghost[data-report-participant] {
-  min-height: 28px;
-  padding: 4px 8px;
-  opacity: 0;
-}
-
-.message:hover .ghost[data-report-message],
-.message:focus-within .ghost[data-report-message],
-.participant:hover .ghost[data-report-participant],
-.participant:focus-within .ghost[data-report-participant] {
-  opacity: 1;
-}
-
 .message p {
   margin: 0;
   white-space: pre-wrap;
@@ -1024,13 +1009,6 @@ body.home-view {
 
 .hidden {
   display: none;
-}
-
-@media (hover: none) {
-  .message .ghost[data-report-message],
-  .participant .ghost[data-report-participant] {
-    opacity: 1;
-  }
 }
 
 @media (max-width: 860px) {

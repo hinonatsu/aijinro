@@ -465,7 +465,7 @@ function statsGrid(stats) {
 function participantsHtml() {
   return state.room.participants
     .map((participant) => {
-      const role = participant.role ? `<span class="badge">${roleLabel(participant.role)}</span>` : `<button class="ghost" data-report-participant="${participant.id}">通報</button>`;
+      const role = participant.role ? `<span class="badge">${roleLabel(participant.role)}</span>` : "";
       const label = participantLabel(participant);
       return `
         <div class="participant">
@@ -497,15 +497,10 @@ function messagesHtml() {
       ]
         .filter(Boolean)
         .join(" ");
-      const report =
-        message.kind === "CHAT"
-          ? `<button class="ghost" data-report-message="${message.id}" data-report-participant="${message.participantId}">通報</button>`
-          : "";
       return `
         <article class="message ${cls}">
           <div class="message-head">
             <strong>${escapeHtml(messageSpeaker(message))}</strong>
-            ${report}
           </div>
           <p>${escapeHtml(scrubDuelNames(message.text))}</p>
         </article>
@@ -803,8 +798,6 @@ document.addEventListener("click", async (event) => {
   }
   const action = button.dataset.action;
   const voteTarget = button.dataset.vote;
-  const messageId = button.dataset.reportMessage;
-  const participantId = button.dataset.reportParticipant;
   try {
     if (action === "start") {
       await api("/api/match", { method: "POST", body: { guestToken: state.token } });
@@ -838,16 +831,6 @@ document.addEventListener("click", async (event) => {
       showToast("結果をコピーしました。");
     } else if (voteTarget) {
       await roomAction("vote", { targetParticipantId: voteTarget });
-    } else if (messageId || participantId) {
-      const reason = prompt("通報理由を入力してください", "ルール違反");
-      if (reason) {
-        await roomAction("report", {
-          messageId,
-          targetParticipantId: participantId,
-          reason
-        });
-        showToast("通報を受け付けました。");
-      }
     }
   } catch (error) {
     showError(error);
