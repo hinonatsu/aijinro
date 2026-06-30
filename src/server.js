@@ -20,7 +20,12 @@ import { publicError } from "./utils.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, "..", "public");
-const iconPath = path.join(__dirname, "icon.png");
+const pngAssets = new Map([
+  ["/icon.png", path.join(__dirname, "icon.png")],
+  ["/icon_name.png", path.join(__dirname, "icon_name.png")],
+  ["/icon_only.png", path.join(__dirname, "icon_only.png")],
+  ["/favicon.ico", path.join(__dirname, "icon_only.png")]
+]);
 const clients = new Set();
 const port = Number(process.env.PORT ?? 3000);
 
@@ -44,8 +49,8 @@ const server = http.createServer(async (req, res) => {
       return await handleApi(req, res, url);
     }
 
-    if (req.method === "GET" && (url.pathname === "/icon.png" || url.pathname === "/favicon.ico")) {
-      return serveIcon(res);
+    if (req.method === "GET" && pngAssets.has(url.pathname)) {
+      return servePngAsset(res, pngAssets.get(url.pathname));
     }
 
     return serveStatic(req, res, url);
@@ -161,15 +166,15 @@ function serveStatic(req, res, url) {
   fs.createReadStream(filePath).pipe(res);
 }
 
-function serveIcon(res) {
-  if (!fs.existsSync(iconPath)) {
-    throw publicError("icon.png not found", 404);
+function servePngAsset(res, filePath) {
+  if (!fs.existsSync(filePath)) {
+    throw publicError(`${path.basename(filePath)} not found`, 404);
   }
   res.writeHead(200, {
     "Content-Type": "image/png",
     "Cache-Control": "public, max-age=3600"
   });
-  fs.createReadStream(iconPath).pipe(res);
+  fs.createReadStream(filePath).pipe(res);
 }
 
 async function readBody(req) {

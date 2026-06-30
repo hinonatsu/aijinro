@@ -156,6 +156,13 @@ h1 {
   letter-spacing: 0;
 }
 
+.brand-name-image {
+  display: block;
+  width: clamp(128px, 17vw, 196px);
+  max-width: 100%;
+  height: auto;
+}
+
 h2 {
   font-size: 1.1rem;
   line-height: 1.25;
@@ -204,6 +211,10 @@ body.home-view {
   font-size: clamp(1.6rem, 2.6vw, 2.1rem);
 }
 
+.home-view .brand-name-image {
+  width: clamp(156px, 22vw, 252px);
+}
+
 .home-view .session-pill {
   display: none;
 }
@@ -228,7 +239,7 @@ body.home-view {
   width: clamp(180px, 28vw, 360px);
   aspect-ratio: 1;
   border-radius: 24px;
-  background: url("/icon.png") center / contain no-repeat;
+  background: url("/icon_only.png") center / contain no-repeat;
   filter: drop-shadow(0 22px 36px rgba(17, 19, 24, 0.14));
 }
 
@@ -542,6 +553,10 @@ body.home-view {
 
 .room-view h1 {
   font-size: 1.35rem;
+}
+
+.room-view .brand-name-image {
+  width: 128px;
 }
 
 .game-layout > .side-panel {
