@@ -100,31 +100,20 @@ function render() {
 
 function syncViewMode() {
   const fixedActionStatuses = new Set(["PERSONA_REVEAL", "ROUND_1", "ROUND_2", "ROUND_3", "VOTING"]);
+  const isHome = Boolean(state.me && !state.room && !state.me.queuePosition);
+  const isQueue = Boolean(state.me?.queuePosition);
+  document.body.classList.toggle("home-view", isHome);
+  document.body.classList.toggle("queue-view", isQueue);
   document.body.classList.toggle("room-view", Boolean(state.room));
   document.body.classList.toggle("game-view", Boolean(state.room && fixedActionStatuses.has(state.room.status)));
 }
 
 function renderHome() {
   app.innerHTML = `
-    <div class="home-layout">
-      <section class="intro-panel">
-        ${signalGrid()}
-        <div class="home-copy">
-          <h2>遊ぶ人数を選ぶ</h2>
-          <p>4人部屋では人間3人とAI1体で対戦します。1:1練習では待たずにAIとすぐ遊べます。</p>
-          <div class="action-row">
-            <button class="primary" data-action="start">4人部屋で遊ぶ</button>
-            <button class="secondary" data-action="start-duel">1:1で練習</button>
-            <button class="ghost" data-action="toggle-rules">ルールを見る</button>
-          </div>
-        </div>
-      </section>
-      <aside class="side-panel">
-        <h2>戦績</h2>
-        ${statsGrid(state.me.stats)}
-        ${state.showRules ? document.querySelector("#rulesTemplate").innerHTML : ""}
-      </aside>
-    </div>
+    <section class="home-menu" aria-label="遊ぶモードを選択">
+      <button class="home-button home-button-primary" data-action="start">４人版AI人狼で遊ぶ</button>
+      <button class="home-button home-button-secondary" data-action="start-duel">2人版AI判定で遊ぶ</button>
+    </section>
   `;
 }
 
