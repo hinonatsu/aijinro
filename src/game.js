@@ -50,6 +50,8 @@ export const DuelJudgement = Object.freeze({
 
 const TURN_MS = 30_000;
 const VOTE_MS = 15_000;
+const DUEL_MATCH_MS = 30_000;
+const DUEL_CHAT_EXCHANGES = 3;
 const MESSAGE_LIMIT = 30;
 
 const DISPLAY_NAMES = [
@@ -137,6 +139,7 @@ export function authenticate(guestToken) {
 export function getMe(guestToken) {
   const user = authenticate(guestToken);
   const queueIndex = store.queue.indexOf(user.id);
+  const duelQueueEntry = store.duelQueue.find((entry) => entry.userId === user.id) ?? null;
   const room = user.activeRoomId ? store.rooms.get(user.activeRoomId) : null;
   return {
     userId: user.id,
@@ -144,6 +147,11 @@ export function getMe(guestToken) {
     activeRoomId: room && room.status !== RoomStatus.CLOSED ? room.id : null,
     queuePosition: queueIndex >= 0 ? queueIndex + 1 : null,
     queueCount: store.queue.length,
+    duelQueue: duelQueueEntry
+      ? {
+          resolveAt: toIso(duelQueueEntry.resolveAt)
+        }
+      : null,
     stats: presentStats(user.stats)
   };
 }
@@ -157,6 +165,7 @@ export function joinQueue(guestToken) {
     return { status: "already_in_room", roomId: user.activeRoomId };
   }
 
+  removeFromDuelQueue(user.id);
   if (!store.queue.includes(user.id)) {
     user.queuedAt = Date.now();
     store.queue.push(user.id);
@@ -185,16 +194,28 @@ export function startDuelMatch(guestToken) {
   }
 
   removeFromQueue(user.id);
-  user.queuedAt = null;
-  const room = createRoomFromUsers([user], { mode: RoomMode.DUEL });
+  const existingEntry = store.duelQueue.find((entry) => entry.userId === user.id);
+  if (existingEntry) {
+    return { status: "queued", mode: RoomMode.DUEL, resolveAt: toIso(existingEntry.resolveAt) };
+  }
 
+  const resolveAt = currentDuelQueueResolveAt() ?? Date.now() + DUEL_MATCH_MS;
+  user.queuedAt = Date.now();
+  store.duelQueue.push({
+    id: id("duel_queue"),
+    userId: user.id,
+    joinedAt: user.queuedAt,
+    resolveAt
+  });
+  ensureDuelQueueTimer(resolveAt);
   emitChange();
-  return { status: "matched", roomId: room.id, mode: room.mode };
+  return { status: "queued", mode: RoomMode.DUEL, resolveAt: toIso(resolveAt) };
 }
 
 export function cancelQueue(guestToken) {
   const user = authenticate(guestToken);
   removeFromQueue(user.id);
+  removeFromDuelQueue(user.id);
   user.queuedAt = null;
   emitChange();
   return { status: "cancelled" };
@@ -348,6 +369,7 @@ export function leaveRoom(guestToken, roomId) {
   participant.connected = false;
   user.activeRoomId = null;
   removeFromQueue(user.id);
+  removeFromDuelQueue(user.id);
 
   if (![RoomStatus.RESULT, RoomStatus.CLOSED].includes(room.status)) {
     clearRoomTimers(room);
@@ -370,8 +392,9 @@ function createRoomFromUsers(users, options = {}) {
   const roomId = id("room");
   const mode = options.mode ?? RoomMode.GROUP;
   const isDuel = mode === RoomMode.DUEL;
+  const shouldAddAI = mode === RoomMode.GROUP || options.fillWithAI === true || (isDuel && users.length === 1);
   const voteThreshold = isDuel ? null : 2;
-  const displayNames = shuffle(DISPLAY_NAMES).slice(0, users.length + 1);
+  const displayNames = shuffle(DISPLAY_NAMES).slice(0, users.length + (shouldAddAI ? 1 : 0));
   const collaboratorUser = isDuel ? null : sample(users);
   const humanBase = users.map((user, index) => ({
     id: id("participant"),
@@ -387,23 +410,27 @@ function createRoomFromUsers(users, options = {}) {
     roleReady: false,
     createdAt: Date.now()
   }));
-  const aiParticipant = {
-    id: id("participant"),
-    roomId,
-    userId: null,
-    displayName: displayNames[users.length],
-    isAI: true,
-    role: Role.AI,
-    team: Team.AI,
-    seatNumber: 0,
-    persona: createPersona(),
-    connected: true,
-    finalSuspectId: null,
-    roleReady: true,
-    createdAt: Date.now()
-  };
+  const aiParticipants = shouldAddAI
+    ? [
+        {
+          id: id("participant"),
+          roomId,
+          userId: null,
+          displayName: displayNames[users.length],
+          isAI: true,
+          role: Role.AI,
+          team: Team.AI,
+          seatNumber: 0,
+          persona: createPersona(),
+          connected: true,
+          finalSuspectId: null,
+          roleReady: true,
+          createdAt: Date.now()
+        }
+      ]
+    : [];
 
-  const participants = shuffle([...humanBase, aiParticipant]).map((participant, index) => ({
+  const participants = shuffle([...humanBase, ...aiParticipants]).map((participant, index) => ({
     ...participant,
     seatNumber: index + 1
   }));
@@ -418,6 +445,7 @@ function createRoomFromUsers(users, options = {}) {
     messages: [],
     votes: [],
     duelJudgement: null,
+    duelJudgements: [],
     reports: [],
     round: 0,
     turnType: null,
@@ -445,7 +473,7 @@ function createRoomFromUsers(users, options = {}) {
   addSystemMessage(
     room,
     isDuel
-      ? "相手と共通お題で話し、最後にAI判定を提出します。"
+      ? "相手とテーマに沿って3往復チャットし、最後にAI判定を提出します。"
       : "3人が揃いました。AI参加者を追加して試合を開始します。"
   );
   store.rooms.set(room.id, room);
@@ -456,12 +484,20 @@ function startRound1(room) {
   clearRoomTimers(room);
   room.status = RoomStatus.ROUND_1;
   room.round = 1;
-  room.turnType = "COMMON_ANSWER";
-  room.turnOrder = shuffle(room.participants.map((participant) => participant.id));
+  room.turnType = room.mode === RoomMode.DUEL ? "FREE_CHAT" : "COMMON_ANSWER";
+  room.turnOrder =
+    room.mode === RoomMode.DUEL
+      ? createDuelChatOrder(room)
+      : shuffle(room.participants.map((participant) => participant.id));
   room.turnIndex = 0;
   room.currentQuestion = null;
-  addSystemMessage(room, `ラウンド1：共通お題「${room.topicPrompt}」`);
-  setTurn(room, room.turnOrder[0], "COMMON_ANSWER");
+  addSystemMessage(
+    room,
+    room.mode === RoomMode.DUEL
+      ? `ラウンド1：テーマ「${room.topicPrompt}」で3往復チャットします。`
+      : `ラウンド1：共通お題「${room.topicPrompt}」`
+  );
+  setTurn(room, room.turnOrder[0], room.turnType);
 }
 
 function advanceRound1(room) {
@@ -474,7 +510,17 @@ function advanceRound1(room) {
     }
     return;
   }
-  setTurn(room, room.turnOrder[room.turnIndex], "COMMON_ANSWER");
+  setTurn(room, room.turnOrder[room.turnIndex], room.turnType);
+}
+
+function createDuelChatOrder(room) {
+  const ai = room.participants.find((participant) => participant.isAI);
+  const humans = humanParticipants(room);
+  const baseOrder =
+    ai && humans[0]
+      ? [humans[0].id, ai.id]
+      : shuffle(humans.map((participant) => participant.id));
+  return Array.from({ length: DUEL_CHAT_EXCHANGES }).flatMap(() => baseOrder);
 }
 
 function startRound2(room) {
@@ -598,9 +644,21 @@ async function performAITurn(roomId) {
     return;
   }
 
+  const chatMessages = room.messages.filter((message) => message.kind === "CHAT");
+  const conversation = chatMessages.map((message) => ({
+    displayName: participantById(room, message.participantId)?.displayName ?? "system",
+    text: message.text
+  }));
+  const ownRecentMessages = chatMessages
+    .filter((message) => message.participantId === aiParticipant.id)
+    .slice(-3)
+    .map((message) => message.text);
+
   const input = {
     roomId,
+    mode: room.mode,
     aiParticipantId: aiParticipant.id,
+    selfDisplayName: aiParticipant.displayName,
     round: room.round,
     actionType: room.turnType,
     persona: aiParticipant.persona,
@@ -608,12 +666,9 @@ async function performAITurn(roomId) {
     questionText: room.currentQuestion?.text,
     targetDisplayName: participantById(room, room.currentQuestion?.askerId)?.displayName,
     participants: publicParticipants(room),
-    conversation: room.messages
-      .filter((message) => message.kind === "CHAT")
-      .map((message) => ({
-        displayName: participantById(room, message.participantId)?.displayName ?? "system",
-        text: message.text
-      }))
+    allowMinorSlip: Math.random() < 0.1,
+    ownRecentMessages,
+    conversation
   };
 
   const output = await generateAIMessage(input);
@@ -664,7 +719,7 @@ function createEmptyDraft(room, participantId, turnType) {
 }
 
 function actionTypeForTurn(room, turnType) {
-  if (turnType === "COMMON_ANSWER") {
+  if (turnType === "COMMON_ANSWER" || turnType === "FREE_CHAT") {
     return "ROUND_1_ANSWER";
   }
   if (turnType === "DIRECTED_QUESTION") {
@@ -788,8 +843,9 @@ async function finalizeCurrentTurn(room) {
         skipLengthCheck: true
       });
       participant.finalSuspectId = target.id;
-      room.duelJudgement = createDuelJudgement(room, participant, target, judgement, reason);
-      finalizeDuelJudgement(room);
+      saveDuelJudgement(room, createDuelJudgement(room, participant, target, judgement, reason));
+      room.round3Index += 1;
+      advanceRound3(room);
       emitChange();
       return;
     }
@@ -893,16 +949,26 @@ function createDuelJudgement(room, participant, target, judgement, reason, auto 
   };
 }
 
+function saveDuelJudgement(room, judgement) {
+  room.duelJudgements = room.duelJudgements.filter((item) => item.participantId !== judgement.participantId);
+  room.duelJudgements.push(judgement);
+  room.duelJudgement = room.duelJudgements[0] ?? null;
+}
+
 function finalizeDuelJudgement(room) {
   clearRoomTimers(room);
-  const ai = room.participants.find((participant) => participant.isAI);
-  const human = humanParticipants(room)[0] ?? null;
-  const fallbackTarget = room.participants.find((participant) => participant.id !== human?.id) ?? ai;
-  const judgement =
-    room.duelJudgement ?? createDuelJudgement(room, human, fallbackTarget, null, "理由なし", true);
-  room.duelJudgement = judgement;
+  const ai = room.participants.find((participant) => participant.isAI) ?? null;
+  for (const human of humanParticipants(room)) {
+    const alreadyJudged = room.duelJudgements.some((judgement) => judgement.participantId === human.id);
+    if (alreadyJudged) {
+      continue;
+    }
+    const fallbackTarget = participantById(room, human.finalSuspectId) ?? chooseValidAITarget(room, human, null);
+    saveDuelJudgement(room, createDuelJudgement(room, human, fallbackTarget, null, "理由なし", true));
+  }
 
-  const winnerTeam = judgement.correct ? Team.HUMAN : Team.AI;
+  const duelJudgements = room.duelJudgements.map((judgement) => ({ ...judgement }));
+  const winnerTeam = duelJudgements.every((judgement) => judgement.correct) ? Team.HUMAN : Team.AI;
   room.status = RoomStatus.RESULT;
   room.round = 0;
   room.turnType = null;
@@ -912,19 +978,20 @@ function finalizeDuelJudgement(room) {
   room.endedAt = Date.now();
   room.result = {
     winnerTeam,
-    aiParticipantId: ai.id,
+    aiParticipantId: ai?.id ?? null,
     collaboratorParticipantId: null,
     aiVotes: null,
     voteThreshold: null,
     votes: [],
-    duelJudgement: { ...judgement }
+    duelJudgement: duelJudgements[0] ?? null,
+    duelJudgements
   };
   updateStats(room);
   addSystemMessage(
     room,
-    judgement.correct
-      ? "AI判定に成功し、人間陣営の勝利です。"
-      : "AI判定に失敗したため、AI陣営の勝利です。"
+    winnerTeam === Team.HUMAN
+      ? "AI判定に成功しました。"
+      : "AI判定に失敗しました。"
   );
 }
 
@@ -980,20 +1047,25 @@ function updateStats(room) {
   for (const participant of humanParticipants(room)) {
     const user = store.users.get(participant.userId);
     const stats = user.stats;
+    const duelJudgement =
+      room.mode === RoomMode.DUEL
+        ? (room.result?.duelJudgements ?? []).find((judgement) => judgement.participantId === participant.id) ??
+          room.result?.duelJudgement
+        : null;
+    const wonGame = room.mode === RoomMode.DUEL ? Boolean(duelJudgement?.correct) : participant.team === room.winnerTeam;
     stats.gamesPlayed += 1;
-    if (participant.team === room.winnerTeam) {
+    if (wonGame) {
       stats.gamesWon += 1;
     }
     if (participant.role === Role.CITIZEN) {
       stats.citizenGames += 1;
-      if (room.winnerTeam === Team.HUMAN) {
+      if (wonGame) {
         stats.citizenWins += 1;
       }
-      const duelJudgement = room.result?.duelJudgement;
       const vote = room.votes.find((item) => item.voterParticipantId === participant.id);
       if (
-        (room.mode === RoomMode.DUEL && duelJudgement?.participantId === participant.id && duelJudgement.correct) ||
-        (room.mode !== RoomMode.DUEL && vote?.targetParticipantId === ai.id)
+        (room.mode === RoomMode.DUEL && duelJudgement?.correct) ||
+        (room.mode !== RoomMode.DUEL && ai && vote?.targetParticipantId === ai.id)
       ) {
         stats.correctAIVotes += 1;
       }
@@ -1010,6 +1082,9 @@ function updateStats(room) {
 function sanitizeRoomForParticipant(room, viewer) {
   const resultVisible = [RoomStatus.RESULT, RoomStatus.CLOSED].includes(room.status);
   const voteThreshold = room.mode === RoomMode.DUEL ? null : room.voteThreshold ?? 2;
+  const duelJudgements = room.result?.duelJudgements ?? (room.result?.duelJudgement ? [room.result.duelJudgement] : []);
+  const viewerDuelJudgement =
+    duelJudgements.find((judgement) => judgement.participantId === viewer.id) ?? duelJudgements[0] ?? null;
   const knownAI =
     viewer.role === Role.AI_COLLABORATOR && !resultVisible
       ? room.participants.find((participant) => participant.isAI)
@@ -1099,7 +1174,8 @@ function sanitizeRoomForParticipant(room, viewer) {
           collaboratorParticipantId: room.result.collaboratorParticipantId,
           aiVotes: room.result.aiVotes,
           voteThreshold: room.result.voteThreshold ?? voteThreshold,
-          duelJudgement: room.result.duelJudgement ? { ...room.result.duelJudgement } : null
+          duelJudgement: viewerDuelJudgement ? { ...viewerDuelJudgement } : null,
+          duelJudgements: duelJudgements.map((judgement) => ({ ...judgement }))
         }
       : null,
     reportsCount: room.reports.length
@@ -1248,6 +1324,61 @@ function removeFromQueue(userId) {
   }
 }
 
+function removeFromDuelQueue(userId) {
+  const index = store.duelQueue.findIndex((entry) => entry.userId === userId);
+  if (index >= 0) {
+    store.duelQueue.splice(index, 1);
+  }
+}
+
+function currentDuelQueueResolveAt() {
+  const now = Date.now();
+  const activeEntry = store.duelQueue.find((entry) => entry.resolveAt > now);
+  return activeEntry?.resolveAt ?? null;
+}
+
+function ensureDuelQueueTimer(resolveAt) {
+  const timer = setTimeout(() => {
+    store.timers.delete(timer);
+    resolveDuelQueue(resolveAt);
+  }, Math.max(0, resolveAt - Date.now()) + 25);
+  store.timers.add(timer);
+}
+
+function resolveDuelQueue(resolveAt, options = {}) {
+  const now = Date.now();
+  const dueEntries = store.duelQueue.filter((entry) => {
+    if (resolveAt != null && entry.resolveAt !== resolveAt) {
+      return false;
+    }
+    return options.force || entry.resolveAt <= now;
+  });
+  if (!dueEntries.length) {
+    return [];
+  }
+
+  const dueIds = new Set(dueEntries.map((entry) => entry.id));
+  store.duelQueue = store.duelQueue.filter((entry) => !dueIds.has(entry.id));
+  const users = dueEntries
+    .map((entry) => store.users.get(entry.userId))
+    .filter((user) => user && !user.activeRoomId);
+  const rooms = [];
+
+  for (let index = 0; index < users.length; index += 2) {
+    const first = users[index];
+    const second = users[index + 1];
+    const matchedUsers = second ? [first, second] : [first];
+    const room = createRoomFromUsers(matchedUsers, {
+      mode: RoomMode.DUEL,
+      fillWithAI: !second
+    });
+    rooms.push(room);
+  }
+
+  emitChange();
+  return rooms;
+}
+
 function clearFinishedRoom(user) {
   if (!user.activeRoomId) {
     return;
@@ -1295,6 +1426,8 @@ export const testOnly = {
   setTurn,
   finalizeCurrentTurn,
   finalizeVotes,
+  resolveDuelQueue,
+  DUEL_MATCH_MS,
   startRound1,
   sanitizeRoomForParticipant
 };

@@ -171,8 +171,8 @@ function syncViewMode() {
 function renderHome() {
   app.innerHTML = `
     <section class="home-menu" aria-label="遊ぶモードを選択">
-      <button class="home-button home-button-primary" data-action="start">４人版AI人狼で遊ぶ</button>
-      <button class="home-button home-button-secondary" data-action="start-duel">2人版AI判定で遊ぶ</button>
+      <button class="home-button home-button-primary" data-action="start">AIのふりをする</button>
+      <button class="home-button home-button-secondary" data-action="start-duel">AIを見破る</button>
     </section>
   `;
 }

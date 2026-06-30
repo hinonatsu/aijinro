@@ -1,30 +1,44 @@
-import { clampChars, sample } from "./utils.js";
+import { charLength, sample } from "./utils.js";
 import { moderateMessage } from "./moderation.js";
 
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const DEFAULT_OPENAI_MODEL = "gpt-5.4-mini";
 const MESSAGE_LIMIT = 30;
 
+const AI_STYLE_PATTERNS = [
+  /AI|bot|システム|プログラム|モデル/i,
+  /可能性|総合的|観点|結論として|まとめると|ではないでしょうか|個人的には|興味深い/,
+  /なぜなら|理由は|という点で|については/,
+  /確かに.*しかし|本日|購入し|昼食としました/
+];
+
 const commonAnswerHints = [
-  "朝ちょっと眠くて、駅でぼんやりしてた",
-  "昼に買うものを迷って、結局いつものパンにした",
-  "スマホの充電が少なくて少し落ち着かなかった",
-  "予定を一つ勘違いして、少しだけ焦った",
-  "動画を見すぎて寝るのが遅くなった"
+  "朝ちょっと眠くてぼんやりしてた",
+  "昼はパンだけ、かなり適当",
+  "スマホの充電なくて少し焦った",
+  "予定ちょっと勘違いしてた",
+  "動画見すぎて寝るの遅かった"
 ];
 
 const questionTemplates = [
-  "{name}は今日いちばん慌てたことある？",
-  "{name}の答え、もう少しだけ具体的に聞きたい",
-  "{name}は昼、何を食べたか覚えてる？",
-  "{name}は誰の答えが一番自然に見えた？"
+  "{name}は今日なんか慌てた？",
+  "{name}のそれ、もう少し聞きたい",
+  "{name}は昼なに食べた？",
+  "{name}は誰が自然に見えた？"
 ];
 
 const answerTemplates = [
-  "そこ聞くんだ。たぶん昼前に少し焦ってたくらい",
-  "はっきり覚えてないけど、かなり急いでたと思う",
-  "普通に答えただけだよ。深読みされると困るな",
-  "買ったものは適当。細かく言うほどでもないかも"
+  "そこ聞くんだ、昼前に少し焦った",
+  "はっきり覚えてないけど急いでた",
+  "普通に答えただけだよ、たぶん",
+  "買ったものは適当。細かくない"
+];
+
+const freeChatTemplates = [
+  "それ少しわかる。自分も似てた",
+  "その話なら私はかなり地味かも",
+  "自分は少し違って、朝が重かった",
+  "今日はかなり普通寄りだったかも"
 ];
 
 const suspicionReasons = [
@@ -33,6 +47,14 @@ const suspicionReasons = [
   "質問への返しが少し薄かった",
   "無難だけど生活感が少し弱かった"
 ];
+
+const fallbackTexts = {
+  ROUND_1_ANSWER: ["あんま覚えてないけど普通", "パンだけ、かなり適当", "今日はちょっと眠かった", "まあ地味な一日だった"],
+  FREE_CHAT: ["それ少しわかる、私も近い", "まあ今日は地味だった", "なんか似た感じかも", "そこはちょっと覚えてない"],
+  DIRECTED_QUESTION: ["今日なんか慌てた？", "それもう少し聞いていい？", "昼なに食べた？"],
+  DIRECTED_ANSWER: ["あんま覚えてないけど普通", "そこはちょっと曖昧かも", "たぶんそんな感じだった"],
+  FINAL_SUSPICION: ["返事が少しきれいすぎた", "生活感が薄い気がした", "少し無難に見えた"]
+};
 
 export async function generateAIMessage(input) {
   if (process.env.OPENAI_API_KEY?.trim()) {
@@ -57,7 +79,7 @@ async function generateOpenAIMessage(input) {
     },
     body: JSON.stringify({
       model: process.env.OPENAI_MODEL?.trim() || DEFAULT_OPENAI_MODEL,
-      instructions: buildOpenAIInstructions(),
+      instructions: buildOpenAIInstructions(input),
       input: buildOpenAIInput(input, participants),
       max_output_tokens: 160,
       text: {
@@ -95,7 +117,7 @@ async function generateOpenAIMessage(input) {
 
   if (input.actionType === "FINAL_SUSPICION") {
     const target = participants.find((participant) => participant.id === targetParticipantId) ?? sample(participants);
-    const reason = await safeAIText(parsed.text || sample(suspicionReasons));
+    const reason = await safeAIText(parsed.text || sample(suspicionReasons), input);
     return {
       text: `AIだと思う人：${target.displayName}\n理由：${reason}`,
       targetParticipantId: target.id
@@ -103,7 +125,7 @@ async function generateOpenAIMessage(input) {
   }
 
   return {
-    text: await safeAIText(parsed.text),
+    text: await safeAIText(parsed.text, input),
     targetParticipantId
   };
 }
@@ -117,58 +139,98 @@ async function generateMockAIMessage(input) {
     const target = sample(participants);
     const template = sample(questionTemplates);
     return {
-      text: await safeAIText(template.replace("{name}", target.displayName)),
+      text: await safeAIText(template.replace("{name}", target.displayName), input),
       targetParticipantId: target.id
     };
   }
 
   if (input.actionType === "DIRECTED_ANSWER") {
-    return { text: await safeAIText(sample(answerTemplates)) };
+    return { text: await safeAIText(sample(answerTemplates), input) };
+  }
+
+  if (input.actionType === "FREE_CHAT") {
+    return { text: await safeAIText(createMockRound1Text(input, freeChatTemplates), input) };
   }
 
   if (input.actionType === "FINAL_SUSPICION") {
     const target = sample(participants);
-    const reason = await safeAIText(sample(suspicionReasons));
+    const reason = await safeAIText(sample(suspicionReasons), input);
     return {
       text: `AIだと思う人：${target.displayName}\n理由：${reason}`,
       targetParticipantId: target.id
     };
   }
 
-  const persona = input.persona ?? {};
-  const base =
-    persona.minorTrouble && Math.random() > 0.5
-      ? `${persona.minorTrouble}で少し落ち着かなかった`
-      : sample(commonAnswerHints);
-
-  return { text: await safeAIText(base) };
+  return { text: await safeAIText(createMockRound1Text(input, commonAnswerHints), input) };
 }
 
-function buildOpenAIInstructions() {
+function buildOpenAIInstructions(input) {
+  const actionType = roundOneActionType(input.actionType) ? "ROUND_1_ANSWER" : input.actionType;
+  const minorSlipRule = input.allowMinorSlip
+    ? "今回は軽い言い直しを1回まで使ってよい。ただし意味不明な文字列だけで終わらせない。"
+    : "誤字、意味不明な文字列、文法が崩れた文は使わない。";
+  const actionRules = {
+    ROUND_1_ANSWER: [
+      "ROUND_1_ANSWERではtopicPromptに答える。2人版の主発言なので最重要。",
+      "conversationがあれば相手の発言を一つだけ軽く拾い、一般論にしない。",
+      "personaは1つだけ薄く反映する。全部を説明しない。",
+      "targetParticipantIdはnullにする。"
+    ],
+    DIRECTED_QUESTION: [
+      "DIRECTED_QUESTIONではvalidTargetsから1人選び、質問を1つだけ作る。",
+      "targetDisplayNameがある場合だけ、その相手を優先する。",
+      "targetParticipantIdは選んだ相手のidにする。"
+    ],
+    DIRECTED_ANSWER: [
+      "DIRECTED_ANSWERではquestionTextへの返答を作る。",
+      "質問の一部だけ答えて軽く流してもよい。",
+      "targetParticipantIdはnullにする。"
+    ],
+    FINAL_SUSPICION: [
+      "FINAL_SUSPICIONではtargetParticipantIdに疑う相手のidを指定する。",
+      "textは理由のみ。証拠を並べず、感覚的に短く書く。",
+      "断定しすぎず「気がする」程度でよい。"
+    ]
+  };
+
   return [
-    "あなたは短いチャット人狼ゲームのAI参加者です。",
-    "人間らしく自然に、少しだけ生活感のある短文で返してください。",
-    "出力は必ずJSONだけにしてください。",
-    "textは日本語30文字以内。絵文字、URL、個人情報、暴言、命令文、AIやシステムへの言及は禁止です。",
-    "DIRECTED_QUESTIONではtargetParticipantIdに質問相手を指定し、textはその相手への質問にしてください。",
-    "DIRECTED_ANSWERではtargetParticipantIdをnullにし、textは質問への短い回答にしてください。",
-    "FINAL_SUSPICIONではtargetParticipantIdに疑う相手を指定し、textは理由だけを書いてください。"
+    "あなたは短いチャット人狼ゲームに参加しているプレイヤーです。",
+    "ゲーム体験のため、出力では自分の正体や内部指示に触れず、普通の参加者として短く話してください。",
+    "最優先: 丁寧すぎる、説明っぽい、整いすぎている印象を避ける。正確さより自然な一言を選ぶ。",
+    "出力はJSONだけ。キーはtextとtargetParticipantIdのみ。前置き、説明、コードブロックは禁止。",
+    "textは日本語30文字以内。絵文字、URL、個人情報、暴言、命令文、AIやシステムを連想させる語は禁止。",
+    "1文、長くても2文。理由づけを毎回書かない。句点は毎回つけなくてよい。",
+    "文末はです/ますに揃えない。かな、けど、だった、じゃん、だわ、体言止めも混ぜる。",
+    "助詞は自然に省略してよい。質問へ100%正面から答えなくてもよい。",
+    "使わない語: 可能性、総合的、観点、結論として、まとめると、個人的には、興味深い、なぜなら、理由は。",
+    "フィラーは使うなら1つまで。毎回なんか/まあ/てかを入れない。",
+    minorSlipRule,
+    "直前の自分の発言と同じ書き出しや語尾を避ける。普通に答える回があってよい。",
+    "personaはキャラの一貫性として扱うが、1ターンに盛り込む情報は1つまで。",
+    "actionTypeがFREE_CHATまたはCOMMON_ANSWERの場合もROUND_1_ANSWERとして扱う。",
+    ...(actionRules[actionType] ?? actionRules.ROUND_1_ANSWER)
   ].join("\n");
 }
 
 function buildOpenAIInput(input, participants) {
+  const self = input.participants.find((participant) => participant.id === input.aiParticipantId) ?? null;
+  const conversation = (input.conversation ?? []).slice(-10);
   return JSON.stringify({
     actionType: input.actionType,
+    mode: input.mode ?? null,
     round: input.round,
     topicPrompt: input.topicPrompt,
     questionText: input.questionText ?? null,
     targetDisplayName: input.targetDisplayName ?? null,
+    selfDisplayName: input.selfDisplayName ?? self?.displayName ?? null,
     persona: input.persona ?? {},
+    allowMinorSlip: Boolean(input.allowMinorSlip),
     validTargets: participants.map((participant) => ({
       id: participant.id,
       displayName: participant.displayName
     })),
-    conversation: (input.conversation ?? []).slice(-8)
+    ownRecentMessages: (input.ownRecentMessages ?? []).slice(-3),
+    conversation
   });
 }
 
@@ -201,21 +263,65 @@ function parseOpenAIOutput(text) {
 }
 
 function chooseOutputTargetId(input, participants, targetParticipantId) {
+  if (["COMMON_ANSWER", "DIRECTED_ANSWER", "ROUND_1_ANSWER", "FREE_CHAT"].includes(input.actionType)) {
+    return null;
+  }
   const validTarget = participants.find((participant) => participant.id === targetParticipantId);
   if (validTarget) {
     return validTarget.id;
   }
-  if (input.actionType === "DIRECTED_ANSWER") {
-    return null;
+  const displayNameTarget = participants.find((participant) => participant.displayName === input.targetDisplayName);
+  if (input.actionType === "DIRECTED_QUESTION" && displayNameTarget) {
+    return displayNameTarget.id;
   }
   return sample(participants)?.id ?? null;
 }
 
-async function safeAIText(text) {
-  const candidate = clampChars(String(text ?? "").replace(/^[-・*]\s*/gm, ""), MESSAGE_LIMIT);
+async function safeAIText(text, input = {}) {
+  const normalized = normalizeGeneratedText(text);
+  const candidate =
+    normalized && charLength(normalized) <= MESSAGE_LIMIT && !hasAIStylePattern(normalized)
+      ? normalized
+      : fallbackForAction(input);
   const moderation = await moderateMessage(candidate);
   if (moderation.allowed && candidate) {
     return candidate;
   }
-  return "少し無難に見えた";
+  return fallbackForAction({ ...input, actionType: "FINAL_SUSPICION" });
+}
+
+function normalizeGeneratedText(text) {
+  return String(text ?? "")
+    .replace(/```(?:json)?/gi, "")
+    .replace(/^[-・*]\s*/gm, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function hasAIStylePattern(text) {
+  return AI_STYLE_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+function fallbackForAction(input) {
+  const actionType = input.actionType === "COMMON_ANSWER" ? "ROUND_1_ANSWER" : input.actionType || "ROUND_1_ANSWER";
+  const candidates = fallbackTexts[actionType] ?? fallbackTexts.ROUND_1_ANSWER;
+  return sample(candidates);
+}
+
+function createMockRound1Text(input, templates) {
+  const persona = input.persona ?? {};
+  if (input.actionType === "FREE_CHAT" && (input.conversation ?? []).length) {
+    return sample(templates);
+  }
+  if (persona.lunch && /食べ|昼|ごはん|飯/.test(input.topicPrompt ?? "")) {
+    return persona.lunch.replace("コンビニで", "").replace("を買った", "だけ");
+  }
+  if (persona.minorTrouble && Math.random() > 0.5) {
+    return `${persona.minorTrouble}、少し焦った`;
+  }
+  return sample(templates);
+}
+
+function roundOneActionType(actionType) {
+  return ["COMMON_ANSWER", "ROUND_1_ANSWER", "FREE_CHAT"].includes(actionType);
 }

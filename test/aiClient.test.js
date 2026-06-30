@@ -84,10 +84,47 @@ test("最終推理ではOpenAIの疑い先と理由を返す", async () => {
   assert.equal(output.text, "AIだと思う人：すずめ\n理由：返しが少し薄い");
 });
 
+test("2人版チャットでは人間らしさ指示を送り、疑い先をnullにする", async () => {
+  let request = null;
+  process.env.OPENAI_API_KEY = "test-key";
+  globalThis.fetch = async (url, options) => {
+    request = { url, options };
+    return {
+      ok: true,
+      json: async () => ({
+        output_text: JSON.stringify({
+          text: "総合的に判断するとパンでした",
+          targetParticipantId: "participant_human_1"
+        })
+      })
+    };
+  };
+
+  const output = await generateAIMessage({
+    ...baseInput(),
+    actionType: "FREE_CHAT",
+    mode: "DUEL",
+    selfDisplayName: "ねこ",
+    ownRecentMessages: ["パンだけ、かなり適当"]
+  });
+  const body = JSON.parse(request.options.body);
+  const input = JSON.parse(body.input);
+
+  assert.match(body.instructions, /ROUND_1_ANSWER/);
+  assert.match(body.instructions, /整いすぎている印象を避ける/);
+  assert.equal(input.selfDisplayName, "ねこ");
+  assert.deepEqual(input.ownRecentMessages, ["パンだけ、かなり適当"]);
+  assert.equal(output.targetParticipantId, null);
+  assert.doesNotMatch(output.text, /総合的|判断/);
+  assert.ok(Array.from(output.text).length <= 30);
+});
+
 function baseInput() {
   return {
     roomId: "room_test",
+    mode: "GROUP",
     aiParticipantId: "participant_ai",
+    selfDisplayName: "ねこ",
     round: 2,
     topicPrompt: "今日食べたものについて答えてください。",
     questionText: "昼は何を食べた？",
@@ -108,7 +145,9 @@ function baseInput() {
     conversation: [
       { displayName: "みかん", text: "昼はおにぎり" },
       { displayName: "すずめ", text: "朝から眠い" }
-    ]
+    ],
+    allowMinorSlip: false,
+    ownRecentMessages: []
   };
 }
 

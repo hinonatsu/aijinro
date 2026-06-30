@@ -2,6 +2,7 @@ export const store = {
   users: new Map(),
   tokens: new Map(),
   queue: [],
+  duelQueue: [],
   rooms: new Map(),
   reports: [],
   timers: new Set()
@@ -38,6 +39,7 @@ export function resetStore() {
   store.users.clear();
   store.tokens.clear();
   store.queue.splice(0, store.queue.length);
+  store.duelQueue.splice(0, store.duelQueue.length);
   store.rooms.clear();
   store.reports.splice(0, store.reports.length);
 }
