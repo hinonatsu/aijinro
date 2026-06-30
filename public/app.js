@@ -203,7 +203,8 @@ function renderQueue() {
 
 function renderDuelQueue() {
   const isPretender = state.me.duelQueue?.duelRole === "PRETENDER";
-  if (isPretender) {
+  const queueResolveAt = state.me.duelQueue?.resolveAt;
+  if (isPretender && !queueResolveAt) {
     app.innerHTML = `
       <div class="home-layout">
         <section class="intro-panel">
@@ -227,9 +228,17 @@ function renderDuelQueue() {
     return;
   }
 
-  const seconds = remainingSeconds(state.me.duelQueue?.resolveAt);
+  const seconds = remainingSeconds(queueResolveAt);
   const numericSeconds = Number.isFinite(seconds) ? seconds : DUEL_MATCH_SECONDS;
   const progress = Math.min(100, Math.max(0, ((DUEL_MATCH_SECONDS - numericSeconds) / DUEL_MATCH_SECONDS) * 100));
+  const queueTitle = isPretender ? "開始まで待機中" : "相手を探しています";
+  const queueDescription = isPretender
+    ? "判定役が見つかりました。開始時刻まで待機しています。"
+    : "成立の有無にかかわらず、30秒後に試合が始まります。";
+  const sideTitle = isPretender ? "AIのふりをする" : "AIを見破る";
+  const sideDescription = isPretender
+    ? "あなたは人間です。会話で相手にAIだと思わせたら勝ちです。"
+    : "テーマに沿って3往復チャットした後、相手がAIか人間かを判定します。";
   app.innerHTML = `
     <div class="home-layout">
       <section class="intro-panel">
@@ -250,6 +259,10 @@ function renderDuelQueue() {
       </aside>
     </div>
   `;
+  app.querySelector(".home-copy h2").textContent = queueTitle;
+  app.querySelector(".home-copy p").textContent = queueDescription;
+  app.querySelector(".side-panel h2").textContent = sideTitle;
+  app.querySelector(".side-panel .muted").textContent = sideDescription;
 }
 
 function renderRoom() {

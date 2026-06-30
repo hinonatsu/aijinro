@@ -205,14 +205,18 @@ export function startPretenderMatch(guestToken) {
 
   removeFromQueue(user.id);
   removeFromDuelQueue(user.id);
-  const waitingSpotter = takeFirstQueuedSpotter();
-  if (waitingSpotter) {
-    const room = createDuelRoom([
-      { user: waitingSpotter, duelRole: DuelRole.SPOTTER },
-      { user, duelRole: DuelRole.PRETENDER }
-    ]);
+  const waitingSpotterEntry = firstQueuedSpotterEntry();
+  if (waitingSpotterEntry) {
+    user.queuedAt = Date.now();
+    store.duelQueue.push(createDuelQueueEntry(user, DuelRole.PRETENDER, waitingSpotterEntry.resolveAt));
+    ensureDuelQueueTimer(waitingSpotterEntry.resolveAt);
     emitChange();
-    return { status: "matched", roomId: room.id, mode: room.mode };
+    return {
+      status: "queued",
+      mode: RoomMode.DUEL,
+      duelRole: DuelRole.PRETENDER,
+      resolveAt: toIso(waitingSpotterEntry.resolveAt)
+    };
   }
 
   const existingEntry = store.pretenderQueue.find((entry) => entry.userId === user.id);
@@ -246,12 +250,14 @@ export function startSpotterMatch(guestToken) {
   removeFromPretenderQueue(user.id);
   const waitingPretender = takeFirstQueuedPretender();
   if (waitingPretender) {
-    const room = createDuelRoom([
-      { user, duelRole: DuelRole.SPOTTER },
-      { user: waitingPretender, duelRole: DuelRole.PRETENDER }
-    ]);
+    const resolveAt = Date.now() + DUEL_MATCH_MS;
+    user.queuedAt = Date.now();
+    waitingPretender.queuedAt = waitingPretender.queuedAt ?? user.queuedAt;
+    store.duelQueue.push(createDuelQueueEntry(user, DuelRole.SPOTTER, resolveAt));
+    store.duelQueue.push(createDuelQueueEntry(waitingPretender, DuelRole.PRETENDER, resolveAt));
+    ensureDuelQueueTimer(resolveAt);
     emitChange();
-    return { status: "matched", roomId: room.id, mode: room.mode };
+    return { status: "queued", mode: RoomMode.DUEL, duelRole: DuelRole.SPOTTER, resolveAt: toIso(resolveAt) };
   }
 
   const existingEntry = store.duelQueue.find((entry) => entry.userId === user.id);
@@ -266,13 +272,7 @@ export function startSpotterMatch(guestToken) {
 
   const resolveAt = currentDuelQueueResolveAt() ?? Date.now() + DUEL_MATCH_MS;
   user.queuedAt = Date.now();
-  store.duelQueue.push({
-    id: id("duel_queue"),
-    userId: user.id,
-    duelRole: DuelRole.SPOTTER,
-    joinedAt: user.queuedAt,
-    resolveAt
-  });
+  store.duelQueue.push(createDuelQueueEntry(user, DuelRole.SPOTTER, resolveAt));
   ensureDuelQueueTimer(resolveAt);
   emitChange();
   return { status: "queued", mode: RoomMode.DUEL, duelRole: DuelRole.SPOTTER, resolveAt: toIso(resolveAt) };
@@ -1495,25 +1495,55 @@ function takeFirstQueuedPretender() {
   return null;
 }
 
-function takeFirstQueuedSpotter() {
+function createDuelQueueEntry(user, duelRole, resolveAt) {
+  return {
+    id: id("duel_queue"),
+    userId: user.id,
+    duelRole,
+    joinedAt: user.queuedAt ?? Date.now(),
+    resolveAt
+  };
+}
+
+function firstQueuedSpotterEntry() {
   const now = Date.now();
-  const index = store.duelQueue.findIndex((entry) => entry.resolveAt > now);
-  if (index < 0) {
-    return null;
+  for (const entry of [...store.duelQueue]) {
+    if (entry.duelRole !== DuelRole.SPOTTER || entry.resolveAt <= now) {
+      continue;
+    }
+    const user = store.users.get(entry.userId);
+    if (!user || user.activeRoomId) {
+      removeFromDuelQueue(entry.userId);
+      continue;
+    }
+    const sameWindowEntries = store.duelQueue.filter((item) => item.resolveAt === entry.resolveAt);
+    const spotterCount = sameWindowEntries.filter((item) => item.duelRole === DuelRole.SPOTTER).length;
+    const pretenderCount = sameWindowEntries.filter((item) => item.duelRole === DuelRole.PRETENDER).length;
+    if (spotterCount > pretenderCount) {
+      return entry;
+    }
   }
-  const [entry] = store.duelQueue.splice(index, 1);
-  const user = store.users.get(entry.userId);
-  if (user && !user.activeRoomId) {
-    user.queuedAt = null;
-    return user;
-  }
-  return takeFirstQueuedSpotter();
+  return null;
 }
 
 function currentDuelQueueResolveAt() {
   const now = Date.now();
   const activeEntry = store.duelQueue.find((entry) => entry.resolveAt > now);
   return activeEntry?.resolveAt ?? null;
+}
+
+function requeuePretender(user) {
+  if (store.pretenderQueue.some((entry) => entry.userId === user.id)) {
+    return;
+  }
+  user.queuedAt = Date.now();
+  store.pretenderQueue.push({
+    id: id("pretender_queue"),
+    userId: user.id,
+    duelRole: DuelRole.PRETENDER,
+    joinedAt: user.queuedAt,
+    resolveAt: null
+  });
 }
 
 function ensureDuelQueueTimer(resolveAt) {
@@ -1538,22 +1568,38 @@ function resolveDuelQueue(resolveAt, options = {}) {
 
   const dueIds = new Set(dueEntries.map((entry) => entry.id));
   store.duelQueue = store.duelQueue.filter((entry) => !dueIds.has(entry.id));
-  const users = dueEntries
-    .map((entry) => store.users.get(entry.userId))
-    .filter((user) => user && !user.activeRoomId);
+  const entries = dueEntries
+    .map((entry) => ({ entry, user: store.users.get(entry.userId) }))
+    .filter(({ user }) => user && !user.activeRoomId);
+  const spotters = entries.filter(({ entry }) => entry.duelRole === DuelRole.SPOTTER);
+  const pretenders = entries.filter(({ entry }) => entry.duelRole === DuelRole.PRETENDER);
   const rooms = [];
 
-  for (let index = 0; index < users.length; index += 2) {
-    const first = users[index];
-    const second = users[index + 1];
+  while (spotters.length && pretenders.length) {
+    const spotter = spotters.shift();
+    const pretender = pretenders.shift();
+    const room = createDuelRoom([
+      { user: spotter.user, duelRole: DuelRole.SPOTTER },
+      { user: pretender.user, duelRole: DuelRole.PRETENDER }
+    ]);
+    rooms.push(room);
+  }
+
+  for (let index = 0; index < spotters.length; index += 2) {
+    const first = spotters[index];
+    const second = spotters[index + 1];
     const assignments = second
       ? [
-          { user: first, duelRole: DuelRole.SPOTTER },
-          { user: second, duelRole: DuelRole.SPOTTER }
+          { user: first.user, duelRole: DuelRole.SPOTTER },
+          { user: second.user, duelRole: DuelRole.SPOTTER }
         ]
-      : [{ user: first, duelRole: DuelRole.SPOTTER }];
+      : [{ user: first.user, duelRole: DuelRole.SPOTTER }];
     const room = createDuelRoom(assignments, { fillWithAI: !second });
     rooms.push(room);
+  }
+
+  for (const { user } of pretenders) {
+    requeuePretender(user);
   }
 
   emitChange();
