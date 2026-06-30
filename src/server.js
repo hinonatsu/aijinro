@@ -20,6 +20,7 @@ import { publicError } from "./utils.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, "..", "public");
+const iconPath = path.join(__dirname, "icon.png");
 const clients = new Set();
 const port = Number(process.env.PORT ?? 3000);
 
@@ -41,6 +42,10 @@ const server = http.createServer(async (req, res) => {
 
     if (url.pathname.startsWith("/api/")) {
       return await handleApi(req, res, url);
+    }
+
+    if (req.method === "GET" && (url.pathname === "/icon.png" || url.pathname === "/favicon.ico")) {
+      return serveIcon(res);
     }
 
     return serveStatic(req, res, url);
@@ -154,6 +159,17 @@ function serveStatic(req, res, url) {
           : "application/octet-stream";
   res.writeHead(200, { "Content-Type": type });
   fs.createReadStream(filePath).pipe(res);
+}
+
+function serveIcon(res) {
+  if (!fs.existsSync(iconPath)) {
+    throw publicError("icon.png not found", 404);
+  }
+  res.writeHead(200, {
+    "Content-Type": "image/png",
+    "Cache-Control": "public, max-age=3600"
+  });
+  fs.createReadStream(iconPath).pipe(res);
 }
 
 async function readBody(req) {

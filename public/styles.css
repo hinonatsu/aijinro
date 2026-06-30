@@ -90,13 +90,20 @@ button:disabled {
   place-items: center;
 }
 
-.brand-mark svg {
+.brand-mark svg,
+.brand-mark img {
   display: block;
   width: 100%;
   height: 100%;
 }
 
-.brand-mark:hover:not(:disabled) svg {
+.brand-mark img {
+  border-radius: inherit;
+  object-fit: cover;
+}
+
+.brand-mark:hover:not(:disabled) svg,
+.brand-mark:hover:not(:disabled) img {
   filter: brightness(1.08);
 }
 
