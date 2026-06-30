@@ -48,6 +48,12 @@ export const DuelJudgement = Object.freeze({
   HUMAN: "HUMAN"
 });
 
+export const DuelRole = Object.freeze({
+  SPOTTER: "SPOTTER",
+  PRETENDER: "PRETENDER",
+  AI: "AI"
+});
+
 const TURN_MS = 30_000;
 const VOTE_MS = 15_000;
 const DUEL_MATCH_MS = 30_000;
@@ -139,7 +145,9 @@ export function authenticate(guestToken) {
 export function getMe(guestToken) {
   const user = authenticate(guestToken);
   const queueIndex = store.queue.indexOf(user.id);
-  const duelQueueEntry = store.duelQueue.find((entry) => entry.userId === user.id) ?? null;
+  const pretenderQueueEntry = store.pretenderQueue.find((entry) => entry.userId === user.id) ?? null;
+  const spotterQueueEntry = store.duelQueue.find((entry) => entry.userId === user.id) ?? null;
+  const duelQueueEntry = pretenderQueueEntry ?? spotterQueueEntry;
   const room = user.activeRoomId ? store.rooms.get(user.activeRoomId) : null;
   return {
     userId: user.id,
@@ -149,7 +157,8 @@ export function getMe(guestToken) {
     queueCount: store.queue.length,
     duelQueue: duelQueueEntry
       ? {
-          resolveAt: toIso(duelQueueEntry.resolveAt)
+          duelRole: duelQueueEntry.duelRole,
+          resolveAt: duelQueueEntry.resolveAt ? toIso(duelQueueEntry.resolveAt) : null
         }
       : null,
     stats: presentStats(user.stats)
@@ -183,7 +192,7 @@ export function joinQueue(guestToken) {
     : { status: "queued", queueCount: store.queue.length };
 }
 
-export function startDuelMatch(guestToken) {
+export function startPretenderMatch(guestToken) {
   const user = authenticate(guestToken);
   ensureNotBanned(user);
   clearFinishedRoom(user);
@@ -194,9 +203,64 @@ export function startDuelMatch(guestToken) {
   }
 
   removeFromQueue(user.id);
+  const waitingSpotter = takeFirstQueuedSpotter();
+  if (waitingSpotter) {
+    const room = createDuelRoom([
+      { user: waitingSpotter, duelRole: DuelRole.SPOTTER },
+      { user, duelRole: DuelRole.PRETENDER }
+    ]);
+    emitChange();
+    return { status: "matched", roomId: room.id, mode: room.mode };
+  }
+
+  removeFromDuelQueue(user.id);
+  const existingEntry = store.pretenderQueue.find((entry) => entry.userId === user.id);
+  if (existingEntry) {
+    return { status: "queued", mode: RoomMode.DUEL, duelRole: DuelRole.PRETENDER, resolveAt: null };
+  }
+
+  user.queuedAt = Date.now();
+  store.pretenderQueue.push({
+    id: id("pretender_queue"),
+    userId: user.id,
+    duelRole: DuelRole.PRETENDER,
+    joinedAt: user.queuedAt,
+    resolveAt: null
+  });
+  emitChange();
+  return { status: "queued", mode: RoomMode.DUEL, duelRole: DuelRole.PRETENDER, resolveAt: null };
+}
+
+export function startSpotterMatch(guestToken) {
+  const user = authenticate(guestToken);
+  ensureNotBanned(user);
+  clearFinishedRoom(user);
+
+  if (user.activeRoomId) {
+    const room = store.rooms.get(user.activeRoomId);
+    return { status: "already_in_room", roomId: user.activeRoomId, mode: room?.mode ?? RoomMode.GROUP };
+  }
+
+  removeFromQueue(user.id);
+  const waitingPretender = takeFirstQueuedPretender();
+  if (waitingPretender) {
+    const room = createDuelRoom([
+      { user, duelRole: DuelRole.SPOTTER },
+      { user: waitingPretender, duelRole: DuelRole.PRETENDER }
+    ]);
+    emitChange();
+    return { status: "matched", roomId: room.id, mode: room.mode };
+  }
+
+  removeFromPretenderQueue(user.id);
   const existingEntry = store.duelQueue.find((entry) => entry.userId === user.id);
   if (existingEntry) {
-    return { status: "queued", mode: RoomMode.DUEL, resolveAt: toIso(existingEntry.resolveAt) };
+    return {
+      status: "queued",
+      mode: RoomMode.DUEL,
+      duelRole: DuelRole.SPOTTER,
+      resolveAt: toIso(existingEntry.resolveAt)
+    };
   }
 
   const resolveAt = currentDuelQueueResolveAt() ?? Date.now() + DUEL_MATCH_MS;
@@ -204,17 +268,21 @@ export function startDuelMatch(guestToken) {
   store.duelQueue.push({
     id: id("duel_queue"),
     userId: user.id,
+    duelRole: DuelRole.SPOTTER,
     joinedAt: user.queuedAt,
     resolveAt
   });
   ensureDuelQueueTimer(resolveAt);
   emitChange();
-  return { status: "queued", mode: RoomMode.DUEL, resolveAt: toIso(resolveAt) };
+  return { status: "queued", mode: RoomMode.DUEL, duelRole: DuelRole.SPOTTER, resolveAt: toIso(resolveAt) };
 }
+
+export const startDuelMatch = startSpotterMatch;
 
 export function cancelQueue(guestToken) {
   const user = authenticate(guestToken);
   removeFromQueue(user.id);
+  removeFromPretenderQueue(user.id);
   removeFromDuelQueue(user.id);
   user.queuedAt = null;
   emitChange();
@@ -369,6 +437,7 @@ export function leaveRoom(guestToken, roomId) {
   participant.connected = false;
   user.activeRoomId = null;
   removeFromQueue(user.id);
+  removeFromPretenderQueue(user.id);
   removeFromDuelQueue(user.id);
 
   if (![RoomStatus.RESULT, RoomStatus.CLOSED].includes(room.status)) {
@@ -392,6 +461,7 @@ function createRoomFromUsers(users, options = {}) {
   const roomId = id("room");
   const mode = options.mode ?? RoomMode.GROUP;
   const isDuel = mode === RoomMode.DUEL;
+  const duelRoleByUserId = options.duelRoleByUserId ?? new Map();
   const shouldAddAI = mode === RoomMode.GROUP || options.fillWithAI === true || (isDuel && users.length === 1);
   const voteThreshold = isDuel ? null : 2;
   const displayNames = shuffle(DISPLAY_NAMES).slice(0, users.length + (shouldAddAI ? 1 : 0));
@@ -404,6 +474,7 @@ function createRoomFromUsers(users, options = {}) {
     isAI: false,
     role: collaboratorUser && user.id === collaboratorUser.id ? Role.AI_COLLABORATOR : Role.CITIZEN,
     team: collaboratorUser && user.id === collaboratorUser.id ? Team.AI : Team.HUMAN,
+    duelRole: isDuel ? (duelRoleByUserId.get(user.id) ?? DuelRole.SPOTTER) : null,
     seatNumber: 0,
     connected: true,
     finalSuspectId: null,
@@ -420,6 +491,7 @@ function createRoomFromUsers(users, options = {}) {
           isAI: true,
           role: Role.AI,
           team: Team.AI,
+          duelRole: isDuel ? DuelRole.AI : null,
           seatNumber: 0,
           persona: createPersona(),
           connected: true,
@@ -473,11 +545,32 @@ function createRoomFromUsers(users, options = {}) {
   addSystemMessage(
     room,
     isDuel
-      ? "相手とテーマに沿って3往復チャットし、最後にAI判定を提出します。"
+      ? duelOpeningMessage(room)
       : "3人が揃いました。AI参加者を追加して試合を開始します。"
   );
   store.rooms.set(room.id, room);
   return room;
+}
+
+function createDuelRoom(assignments, options = {}) {
+  const duelRoleByUserId = new Map(assignments.map((assignment) => [assignment.user.id, assignment.duelRole]));
+  return createRoomFromUsers(assignments.map((assignment) => assignment.user), {
+    mode: RoomMode.DUEL,
+    fillWithAI: Boolean(options.fillWithAI),
+    duelRoleByUserId
+  });
+}
+
+function duelOpeningMessage(room) {
+  const hasPretender = room.participants.some((participant) => participant.duelRole === DuelRole.PRETENDER);
+  const hasAI = room.participants.some((participant) => participant.isAI);
+  if (hasPretender) {
+    return "AIのふりをする人間と、それを見破る人間の1:1試合です。";
+  }
+  if (hasAI) {
+    return "相手がAIか人間かを見破る1:1試合です。";
+  }
+  return "相手がAIか人間かを互いに見破る1:1試合です。";
 }
 
 function startRound1(room) {
@@ -515,10 +608,14 @@ function advanceRound1(room) {
 
 function createDuelChatOrder(room) {
   const ai = room.participants.find((participant) => participant.isAI);
+  const pretender = room.participants.find((participant) => participant.duelRole === DuelRole.PRETENDER);
+  const spotter = room.participants.find((participant) => participant.duelRole === DuelRole.SPOTTER);
   const humans = humanParticipants(room);
   const baseOrder =
     ai && humans[0]
       ? [humans[0].id, ai.id]
+      : pretender && spotter
+        ? [pretender.id, spotter.id]
       : shuffle(humans.map((participant) => participant.id));
   return Array.from({ length: DUEL_CHAT_EXCHANGES }).flatMap(() => baseOrder);
 }
@@ -552,13 +649,17 @@ function startRound3(room) {
   room.round = 3;
   room.round3Order =
     room.mode === RoomMode.DUEL
-      ? humanParticipants(room).map((participant) => participant.id)
+      ? duelJudgementParticipants(room).map((participant) => participant.id)
       : shuffle(room.participants.map((participant) => participant.id));
   room.round3Index = 0;
   addSystemMessage(
     room,
     room.mode === RoomMode.DUEL ? "ラウンド2：AI判定を始めます。" : "ラウンド3：最終推理を始めます。"
   );
+  if (!room.round3Order.length) {
+    finalizeDuelJudgement(room);
+    return;
+  }
   setTurn(room, room.round3Order[0], "FINAL_SUSPICION");
 }
 
@@ -653,6 +754,18 @@ async function performAITurn(roomId) {
     .filter((message) => message.participantId === aiParticipant.id)
     .slice(-3)
     .map((message) => message.text);
+  const lastOtherMessage = [...chatMessages].reverse().find((message) => message.participantId !== aiParticipant.id);
+  const replyTo = room.currentQuestion?.text
+    ? {
+        displayName: participantById(room, room.currentQuestion.askerId)?.displayName ?? "system",
+        text: room.currentQuestion.text
+      }
+    : lastOtherMessage
+      ? {
+          displayName: participantById(room, lastOtherMessage.participantId)?.displayName ?? "system",
+          text: lastOtherMessage.text
+        }
+      : null;
 
   const input = {
     roomId,
@@ -668,6 +781,7 @@ async function performAITurn(roomId) {
     participants: publicParticipants(room),
     allowMinorSlip: Math.random() < 0.1,
     ownRecentMessages,
+    replyTo,
     conversation
   };
 
@@ -958,7 +1072,7 @@ function saveDuelJudgement(room, judgement) {
 function finalizeDuelJudgement(room) {
   clearRoomTimers(room);
   const ai = room.participants.find((participant) => participant.isAI) ?? null;
-  for (const human of humanParticipants(room)) {
+  for (const human of duelJudgementParticipants(room)) {
     const alreadyJudged = room.duelJudgements.some((judgement) => judgement.participantId === human.id);
     if (alreadyJudged) {
       continue;
@@ -968,31 +1082,44 @@ function finalizeDuelJudgement(room) {
   }
 
   const duelJudgements = room.duelJudgements.map((judgement) => ({ ...judgement }));
-  const winnerTeam = duelJudgements.every((judgement) => judgement.correct) ? Team.HUMAN : Team.AI;
+  const participantResults = createDuelParticipantResults(room, duelJudgements);
   room.status = RoomStatus.RESULT;
   room.round = 0;
   room.turnType = null;
   room.currentTurnParticipantId = null;
   room.phaseEndsAt = null;
-  room.winnerTeam = winnerTeam;
+  room.winnerTeam = null;
   room.endedAt = Date.now();
   room.result = {
-    winnerTeam,
+    winnerTeam: null,
     aiParticipantId: ai?.id ?? null,
     collaboratorParticipantId: null,
     aiVotes: null,
     voteThreshold: null,
     votes: [],
     duelJudgement: duelJudgements[0] ?? null,
-    duelJudgements
+    duelJudgements,
+    participantResults
   };
   updateStats(room);
-  addSystemMessage(
-    room,
-    winnerTeam === Team.HUMAN
-      ? "AI判定に成功しました。"
-      : "AI判定に失敗しました。"
-  );
+  addSystemMessage(room, "判定が完了しました。");
+}
+
+function createDuelParticipantResults(room, duelJudgements) {
+  return humanParticipants(room).map((participant) => {
+    const ownJudgement = duelJudgements.find((judgement) => judgement.participantId === participant.id) ?? null;
+    const judgementAboutMe = duelJudgements.find((judgement) => judgement.targetParticipantId === participant.id) ?? null;
+    const won =
+      participant.duelRole === DuelRole.PRETENDER
+        ? !judgementAboutMe || judgementAboutMe.judgement !== DuelJudgement.HUMAN
+        : Boolean(ownJudgement?.correct);
+    return {
+      participantId: participant.id,
+      duelRole: participant.duelRole ?? DuelRole.SPOTTER,
+      won,
+      judgementId: ownJudgement?.id ?? judgementAboutMe?.id ?? null
+    };
+  });
 }
 
 function finalizeVotes(room) {
@@ -1052,7 +1179,11 @@ function updateStats(room) {
         ? (room.result?.duelJudgements ?? []).find((judgement) => judgement.participantId === participant.id) ??
           room.result?.duelJudgement
         : null;
-    const wonGame = room.mode === RoomMode.DUEL ? Boolean(duelJudgement?.correct) : participant.team === room.winnerTeam;
+    const duelResult =
+      room.mode === RoomMode.DUEL
+        ? (room.result?.participantResults ?? []).find((result) => result.participantId === participant.id)
+        : null;
+    const wonGame = room.mode === RoomMode.DUEL ? Boolean(duelResult?.won) : participant.team === room.winnerTeam;
     stats.gamesPlayed += 1;
     if (wonGame) {
       stats.gamesWon += 1;
@@ -1064,7 +1195,7 @@ function updateStats(room) {
       }
       const vote = room.votes.find((item) => item.voterParticipantId === participant.id);
       if (
-        (room.mode === RoomMode.DUEL && duelJudgement?.correct) ||
+        (room.mode === RoomMode.DUEL && participant.duelRole === DuelRole.SPOTTER && duelJudgement?.correct) ||
         (room.mode !== RoomMode.DUEL && ai && vote?.targetParticipantId === ai.id)
       ) {
         stats.correctAIVotes += 1;
@@ -1084,7 +1215,12 @@ function sanitizeRoomForParticipant(room, viewer) {
   const voteThreshold = room.mode === RoomMode.DUEL ? null : room.voteThreshold ?? 2;
   const duelJudgements = room.result?.duelJudgements ?? (room.result?.duelJudgement ? [room.result.duelJudgement] : []);
   const viewerDuelJudgement =
-    duelJudgements.find((judgement) => judgement.participantId === viewer.id) ?? duelJudgements[0] ?? null;
+    duelJudgements.find((judgement) => judgement.participantId === viewer.id) ??
+    duelJudgements.find((judgement) => judgement.targetParticipantId === viewer.id) ??
+    duelJudgements[0] ??
+    null;
+  const participantResults = room.result?.participantResults ?? [];
+  const viewerParticipantResult = participantResults.find((result) => result.participantId === viewer.id) ?? null;
   const knownAI =
     viewer.role === Role.AI_COLLABORATOR && !resultVisible
       ? room.participants.find((participant) => participant.isAI)
@@ -1115,6 +1251,7 @@ function sanitizeRoomForParticipant(room, viewer) {
       displayName: viewer.displayName,
       role: viewer.role,
       team: viewer.team,
+      duelRole: viewer.duelRole ?? null,
       roleReady: viewer.roleReady,
       hasVoted: room.mode !== RoomMode.DUEL && room.votes.some((vote) => vote.voterParticipantId === viewer.id)
     },
@@ -1142,6 +1279,7 @@ function sanitizeRoomForParticipant(room, viewer) {
           publicParticipant.role = participant.role;
           publicParticipant.team = participant.team;
           publicParticipant.isAI = participant.isAI;
+          publicParticipant.duelRole = participant.duelRole ?? null;
         }
         return publicParticipant;
       }),
@@ -1175,7 +1313,9 @@ function sanitizeRoomForParticipant(room, viewer) {
           aiVotes: room.result.aiVotes,
           voteThreshold: room.result.voteThreshold ?? voteThreshold,
           duelJudgement: viewerDuelJudgement ? { ...viewerDuelJudgement } : null,
-          duelJudgements: duelJudgements.map((judgement) => ({ ...judgement }))
+          duelJudgements: duelJudgements.map((judgement) => ({ ...judgement })),
+          participantResult: viewerParticipantResult ? { ...viewerParticipantResult } : null,
+          participantResults: participantResults.map((result) => ({ ...result }))
         }
       : null,
     reportsCount: room.reports.length
@@ -1311,6 +1451,10 @@ function humanParticipants(room) {
   return room.participants.filter((participant) => !participant.isAI);
 }
 
+function duelJudgementParticipants(room) {
+  return humanParticipants(room).filter((participant) => participant.duelRole !== DuelRole.PRETENDER);
+}
+
 function ensureNotBanned(user) {
   if (user.banUntil && user.banUntil > Date.now()) {
     throw publicError("一時的にマッチングできません。", 403);
@@ -1324,11 +1468,45 @@ function removeFromQueue(userId) {
   }
 }
 
+function removeFromPretenderQueue(userId) {
+  const index = store.pretenderQueue.findIndex((entry) => entry.userId === userId);
+  if (index >= 0) {
+    store.pretenderQueue.splice(index, 1);
+  }
+}
+
 function removeFromDuelQueue(userId) {
   const index = store.duelQueue.findIndex((entry) => entry.userId === userId);
   if (index >= 0) {
     store.duelQueue.splice(index, 1);
   }
+}
+
+function takeFirstQueuedPretender() {
+  while (store.pretenderQueue.length) {
+    const entry = store.pretenderQueue.shift();
+    const user = store.users.get(entry.userId);
+    if (user && !user.activeRoomId) {
+      user.queuedAt = null;
+      return user;
+    }
+  }
+  return null;
+}
+
+function takeFirstQueuedSpotter() {
+  const now = Date.now();
+  const index = store.duelQueue.findIndex((entry) => entry.resolveAt > now);
+  if (index < 0) {
+    return null;
+  }
+  const [entry] = store.duelQueue.splice(index, 1);
+  const user = store.users.get(entry.userId);
+  if (user && !user.activeRoomId) {
+    user.queuedAt = null;
+    return user;
+  }
+  return takeFirstQueuedSpotter();
 }
 
 function currentDuelQueueResolveAt() {
@@ -1367,11 +1545,13 @@ function resolveDuelQueue(resolveAt, options = {}) {
   for (let index = 0; index < users.length; index += 2) {
     const first = users[index];
     const second = users[index + 1];
-    const matchedUsers = second ? [first, second] : [first];
-    const room = createRoomFromUsers(matchedUsers, {
-      mode: RoomMode.DUEL,
-      fillWithAI: !second
-    });
+    const assignments = second
+      ? [
+          { user: first, duelRole: DuelRole.SPOTTER },
+          { user: second, duelRole: DuelRole.SPOTTER }
+        ]
+      : [{ user: first, duelRole: DuelRole.SPOTTER }];
+    const room = createDuelRoom(assignments, { fillWithAI: !second });
     rooms.push(room);
   }
 

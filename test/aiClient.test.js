@@ -93,7 +93,7 @@ test("2人版チャットでは人間らしさ指示を送り、疑い先をnull
       ok: true,
       json: async () => ({
         output_text: JSON.stringify({
-          text: "総合的に判断するとパンでした",
+          text: "今日はかなり普通寄りだったかも",
           targetParticipantId: "participant_human_1"
         })
       })
@@ -105,17 +105,36 @@ test("2人版チャットでは人間らしさ指示を送り、疑い先をnull
     actionType: "FREE_CHAT",
     mode: "DUEL",
     selfDisplayName: "ねこ",
-    ownRecentMessages: ["パンだけ、かなり適当"]
+    ownRecentMessages: ["パンだけ、かなり適当"],
+    replyTo: { displayName: "みかん", text: "昼はおにぎり" }
   });
   const body = JSON.parse(request.options.body);
   const input = JSON.parse(body.input);
 
   assert.match(body.instructions, /ROUND_1_ANSWER/);
+  assert.match(body.instructions, /replyToがあれば必ずその発言への返答/);
   assert.match(body.instructions, /整いすぎている印象を避ける/);
   assert.equal(input.selfDisplayName, "ねこ");
   assert.deepEqual(input.ownRecentMessages, ["パンだけ、かなり適当"]);
+  assert.deepEqual(input.replyTo, { displayName: "みかん", text: "昼はおにぎり" });
+  assert.deepEqual(input.replyToHints, ["昼", "おにぎり"]);
   assert.equal(output.targetParticipantId, null);
-  assert.doesNotMatch(output.text, /総合的|判断/);
+  assert.equal(output.text, "昼はパンだけ、かなり適当");
+  assert.ok(Array.from(output.text).length <= 30);
+});
+
+test("モックAIも直前の相手発言に寄せて返す", async () => {
+  process.env.OPENAI_API_KEY = "";
+
+  const output = await generateAIMessage({
+    ...baseInput(),
+    actionType: "FREE_CHAT",
+    mode: "DUEL",
+    replyTo: { displayName: "みかん", text: "眠くて昼もぼんやりしてた" }
+  });
+
+  assert.equal(output.text, "昼はパンだけ、かなり適当");
+  assert.equal(output.targetParticipantId, undefined);
   assert.ok(Array.from(output.text).length <= 30);
 });
 

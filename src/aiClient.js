@@ -12,6 +12,31 @@ const AI_STYLE_PATTERNS = [
   /確かに.*しかし|本日|購入し|昼食としました/
 ];
 
+const CONTEXT_HINTS = [
+  "昼",
+  "朝",
+  "夜",
+  "おにぎり",
+  "パン",
+  "コンビニ",
+  "眠",
+  "だる",
+  "疲",
+  "動画",
+  "番組",
+  "スマホ",
+  "充電",
+  "雨",
+  "暑",
+  "寒",
+  "買",
+  "食べ",
+  "寝",
+  "忘",
+  "ミス",
+  "失敗"
+];
+
 const commonAnswerHints = [
   "朝ちょっと眠くてぼんやりしてた",
   "昼はパンだけ、かなり適当",
@@ -172,7 +197,9 @@ function buildOpenAIInstructions(input) {
   const actionRules = {
     ROUND_1_ANSWER: [
       "ROUND_1_ANSWERではtopicPromptに答える。2人版の主発言なので最重要。",
-      "conversationがあれば相手の発言を一つだけ軽く拾い、一般論にしない。",
+      "replyToがあれば必ずその発言への返答にする。一般論や独り言にしない。",
+      "replyToHintsがあれば、その中の1つをtextに自然に含める。",
+      "相手の質問には短く答える。相手の感想には一言だけ反応してから自分の話を足す。",
       "personaは1つだけ薄く反映する。全部を説明しない。",
       "targetParticipantIdはnullにする。"
     ],
@@ -215,6 +242,7 @@ function buildOpenAIInstructions(input) {
 function buildOpenAIInput(input, participants) {
   const self = input.participants.find((participant) => participant.id === input.aiParticipantId) ?? null;
   const conversation = (input.conversation ?? []).slice(-10);
+  const replyTo = input.replyTo ?? null;
   return JSON.stringify({
     actionType: input.actionType,
     mode: input.mode ?? null,
@@ -230,6 +258,8 @@ function buildOpenAIInput(input, participants) {
       displayName: participant.displayName
     })),
     ownRecentMessages: (input.ownRecentMessages ?? []).slice(-3),
+    replyTo,
+    replyToHints: replyTo?.text ? contextHints(replyTo.text) : [],
     conversation
   });
 }
@@ -280,7 +310,10 @@ function chooseOutputTargetId(input, participants, targetParticipantId) {
 async function safeAIText(text, input = {}) {
   const normalized = normalizeGeneratedText(text);
   const candidate =
-    normalized && charLength(normalized) <= MESSAGE_LIMIT && !hasAIStylePattern(normalized)
+    normalized &&
+    charLength(normalized) <= MESSAGE_LIMIT &&
+    !hasAIStylePattern(normalized) &&
+    isContextualEnough(normalized, input)
       ? normalized
       : fallbackForAction(input);
   const moderation = await moderateMessage(candidate);
@@ -303,6 +336,9 @@ function hasAIStylePattern(text) {
 }
 
 function fallbackForAction(input) {
+  if (roundOneActionType(input.actionType) && input.replyTo?.text) {
+    return contextualFallback(input);
+  }
   const actionType = input.actionType === "COMMON_ANSWER" ? "ROUND_1_ANSWER" : input.actionType || "ROUND_1_ANSWER";
   const candidates = fallbackTexts[actionType] ?? fallbackTexts.ROUND_1_ANSWER;
   return sample(candidates);
@@ -310,6 +346,9 @@ function fallbackForAction(input) {
 
 function createMockRound1Text(input, templates) {
   const persona = input.persona ?? {};
+  if (roundOneActionType(input.actionType) && input.replyTo?.text) {
+    return contextualFallback(input);
+  }
   if (input.actionType === "FREE_CHAT" && (input.conversation ?? []).length) {
     return sample(templates);
   }
@@ -324,4 +363,58 @@ function createMockRound1Text(input, templates) {
 
 function roundOneActionType(actionType) {
   return ["COMMON_ANSWER", "ROUND_1_ANSWER", "FREE_CHAT"].includes(actionType);
+}
+
+function isContextualEnough(text, input) {
+  if (!roundOneActionType(input.actionType) || !input.replyTo?.text) {
+    return true;
+  }
+  const output = normalizeForContext(text);
+  const hints = contextHints(input.replyTo.text);
+  if (hints.some((hint) => output.includes(hint))) {
+    return true;
+  }
+  return ["そっち", "こっち", "私も", "俺も", "同じ", "似て", "わかる"].some((marker) => output.includes(marker));
+}
+
+function contextHints(text) {
+  const normalized = normalizeForContext(text);
+  return CONTEXT_HINTS.filter((hint) => normalized.includes(hint)).slice(0, 4);
+}
+
+function normalizeForContext(text) {
+  return String(text ?? "").replace(/[。、！？!?「」\s]/g, "");
+}
+
+function contextualFallback(input) {
+  const replyText = input.replyTo?.text ?? "";
+  const persona = input.persona ?? {};
+  if (/昼|食べ|ごはん|飯|おにぎり|パン|コンビニ/.test(replyText)) {
+    return persona.lunch?.includes("パン") ? "昼はパンだけ、かなり適当" : "昼は適当、そっちは偉い";
+  }
+  if (/眠|寝|だる|疲/.test(replyText)) {
+    return "眠いのわかる、こっちも";
+  }
+  if (/動画|番組|見/.test(replyText)) {
+    return "動画は短いやつだけ見た";
+  }
+  if (/買|店/.test(replyText)) {
+    return "コンビニ寄ったくらいかな";
+  }
+  if (/失敗|ミス|忘/.test(replyText)) {
+    return "それある、私も少しミスった";
+  }
+  if (/雨|天気|暑|寒/.test(replyText)) {
+    return "それ地味にきついよね";
+  }
+  const fragment = compactReplyFragment(replyText);
+  return fragment ? limitText(`${fragment}か、私は普通`) : sample(fallbackTexts.FREE_CHAT);
+}
+
+function compactReplyFragment(text) {
+  return normalizeForContext(text).slice(0, 8);
+}
+
+function limitText(text) {
+  return Array.from(text).slice(0, MESSAGE_LIMIT).join("");
 }

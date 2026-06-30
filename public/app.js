@@ -202,6 +202,31 @@ function renderQueue() {
 }
 
 function renderDuelQueue() {
+  const isPretender = state.me.duelQueue?.duelRole === "PRETENDER";
+  if (isPretender) {
+    app.innerHTML = `
+      <div class="home-layout">
+        <section class="intro-panel">
+          ${signalGrid(1)}
+          <div class="home-copy">
+            <h2>判定役を待っています</h2>
+            <p>人間プレイヤーが「AIを見破る」を選ぶと、1:1の試合が始まります。</p>
+            <div class="queue-meter"><span style="width:55%"></span></div>
+            <div class="action-row">
+              <span class="phase-chip">待機中</span>
+              <button class="danger" data-action="cancel-match">キャンセル</button>
+            </div>
+          </div>
+        </section>
+        <aside class="side-panel">
+          <h2>AIのふりをする</h2>
+          <p class="muted">あなたは人間です。会話で相手にAIだと思わせたら勝ちです。</p>
+        </aside>
+      </div>
+    `;
+    return;
+  }
+
   const seconds = remainingSeconds(state.me.duelQueue?.resolveAt);
   const numericSeconds = Number.isFinite(seconds) ? seconds : DUEL_MATCH_SECONDS;
   const progress = Math.min(100, Math.max(0, ((DUEL_MATCH_SECONDS - numericSeconds) / DUEL_MATCH_SECONDS) * 100));
@@ -211,7 +236,7 @@ function renderDuelQueue() {
         ${signalGrid(2)}
         <div class="home-copy">
           <h2>相手を探しています</h2>
-          <p>30秒のマッチング時間が終わると試合が始まります。</p>
+          <p>人間プレイヤーが見つからなければ、30秒後にAIと試合が始まります。</p>
           <div class="queue-meter"><span style="width:${progress.toFixed(1)}%"></span></div>
           <div class="action-row">
             <span class="phase-chip">開始まで <span data-countdown>${seconds}秒</span></span>
@@ -220,8 +245,8 @@ function renderDuelQueue() {
         </div>
       </section>
       <aside class="side-panel">
-        <h2>1:1 AI判定</h2>
-        <p class="muted">テーマに沿って3往復チャットした後、相手がAIかどうかを判定します。</p>
+        <h2>AIを見破る</h2>
+        <p class="muted">テーマに沿って3往復チャットした後、相手がAIか人間かを判定します。</p>
       </aside>
     </div>
   `;
@@ -282,6 +307,7 @@ function renderDuelRoleReveal() {
   const readyCount = state.room.readiness?.roleReadyCount ?? (ready ? 1 : 0);
   const humanCount = state.room.readiness?.humanCount ?? 2;
   const opponentReady = humanCount <= 1 || readyCount >= humanCount || (!ready && readyCount > 0);
+  const duelRole = state.room.myParticipant.duelRole;
   const statusTitle = ready
     ? opponentReady
       ? "まもなく始まります"
@@ -291,7 +317,7 @@ function renderDuelRoleReveal() {
     ? opponentReady
       ? "準備がそろいました。ラウンド1へ進みます。"
       : "あなたは確認済みです。相手が確認するとラウンド1が始まります。"
-    : "共通のお題について話し合い、最後にAI判定を提出します。";
+    : duelRoleIntroText(duelRole);
   const buttonLabel = ready
     ? `${opponentReady ? "開始準備中" : "相手の確認待ち"}<span class="wait-dot" aria-hidden="true"></span>`
     : "確認して待つ";
@@ -302,11 +328,11 @@ function renderDuelRoleReveal() {
       <div class="duel-stepper" aria-label="進行">
         <span class="duel-step is-active">確認</span>
         <span class="duel-step">会話</span>
-        <span class="duel-step">AI判定</span>
+        <span class="duel-step">正体判定</span>
         <span class="duel-step">結果</span>
       </div>
       <div class="duel-role-copy" aria-live="polite">
-        <p class="phase-chip">ラウンド開始前</p>
+        <p class="phase-chip">${duelRoleLabel(duelRole)}</p>
         <h2>${statusTitle}</h2>
         <p class="muted">${statusText}</p>
         <p class="muted">2人が確認すると、ラウンド1が始まります。</p>
@@ -332,6 +358,13 @@ function duelReadyRowHtml(label, status, isReady) {
       </span>
     </div>
   `;
+}
+
+function duelRoleIntroText(duelRole) {
+  if (duelRole === "PRETENDER") {
+    return "あなたは人間です。相手にAIだと思わせたら勝ちです。";
+  }
+  return "相手がAIか人間かを見破ったら勝ちです。";
 }
 
 function renderGameShell(panelHtml) {
@@ -425,7 +458,7 @@ function turnPanel() {
     const isDuel = isDuelRoom(room);
     const judgementField = isDuel ? duelJudgementFieldHtml() : "";
     const targetField = isDuel ? "" : `<label>AIだと思う人${targetSelectHtml()}</label>`;
-    const reasonLabel = isDuel ? "AI判定の理由" : "理由";
+    const reasonLabel = isDuel ? "判定の理由" : "理由";
     return `
       <section class="input-panel">
         ${judgementField}
@@ -480,25 +513,19 @@ function renderResult() {
   const collaborator = room.participants.find((participant) => participant.id === room.result?.collaboratorParticipantId);
   const voteThreshold = room.result?.voteThreshold ?? room.voteThreshold ?? 2;
   const isDuel = isDuelRoom(room);
-  const aiText = isDuel
-    ? ai
-      ? `AIは${escapeHtml(participantLabel(ai))}でした。`
-      : "AIはいませんでした。"
-    : `AIは「${escapeHtml(ai?.displayName ?? "")}」でした。`;
+  const aiText = `AIは「${escapeHtml(ai?.displayName ?? "")}」でした。`;
   const collaboratorText = !isDuel && collaborator ? `AI協力者は「${escapeHtml(collaborator.displayName)}」でした。` : "";
   const winner =
     room.status === "CLOSED"
       ? "試合は無効です"
       : isDuel
-        ? room.result?.duelJudgement?.correct
-          ? "AI判定成功"
-          : "AI判定失敗"
+        ? duelOutcomeTitle(room)
         : room.result?.winnerTeam === "HUMAN"
           ? "人間陣営の勝利"
           : "AI陣営の勝利";
   const resultSummaryHtml = room.result
     ? isDuel
-      ? duelResultSummaryHtml(room, aiText)
+      ? duelResultSummaryHtml(room)
       : `<p>${aiText}${collaboratorText}</p>
          <p>AIに入った票：${room.result.aiVotes}票 / 必要：${voteThreshold}票</p>`
     : "";
@@ -565,7 +592,12 @@ function statsGrid(stats) {
 function participantsHtml() {
   return state.room.participants
     .map((participant) => {
-      const role = participant.role ? `<span class="badge">${roleLabel(participant.role)}</span>` : "";
+      const role =
+        isDuelRoom() && participant.duelRole
+          ? `<span class="badge">${duelRoleLabel(participant.duelRole)}</span>`
+          : participant.role
+            ? `<span class="badge">${roleLabel(participant.role)}</span>`
+            : "";
       const label = participantLabel(participant);
       return `
         <div class="participant">
@@ -623,7 +655,7 @@ function targetSelectHtml() {
 function duelJudgementFieldHtml() {
   return `
     <fieldset class="judgement-field">
-      <legend>相手の判定</legend>
+      <legend>相手の正体</legend>
       <div class="judgement-options">
         <label class="judgement-option">
           <input type="radio" name="duelJudgement" value="AI" />
@@ -685,10 +717,34 @@ function voteLabel(vote) {
   return `${voter} → ${target}`;
 }
 
-function duelResultSummaryHtml(room, aiText) {
+function duelOutcomeTitle(room) {
+  const won = Boolean(room.result?.participantResult?.won);
+  if (room.myParticipant.duelRole === "PRETENDER") {
+    return won ? "AIのふり成功" : "人間だと見破られました";
+  }
+  return won ? "見破り成功" : "見破り失敗";
+}
+
+function duelResultSummaryHtml(room) {
   const judgement = room.result?.duelJudgement;
-  const resultText = judgement?.correct ? "AI判定に成功しました。" : "AI判定に失敗しました。";
-  return `<p>${aiText}</p><p>${resultText}</p>`;
+  const won = Boolean(room.result?.participantResult?.won);
+  if (room.myParticipant.duelRole === "PRETENDER") {
+    const judgementText = duelJudgementValueLabel(judgement?.judgement);
+    return `
+      <p>あなたは人間でした。</p>
+      <p>${won ? "相手にAIだと思わせました。" : "相手に人間だと見破られました。"}</p>
+      <p>相手の判定：${escapeHtml(judgementText)}</p>
+    `;
+  }
+
+  const target =
+    room.participants.find((participant) => participant.id === judgement?.targetParticipantId) ??
+    room.participants.find((participant) => participant.id !== room.myParticipant.id);
+  const truth = target?.isAI ? "AI" : "人間";
+  return `
+    <p>相手は${truth}でした。</p>
+    <p>${won ? "正体を見破りました。" : "正体を見破れませんでした。"}</p>
+  `;
 }
 
 function duelJudgementResultHtml(room) {
@@ -749,7 +805,7 @@ function phaseLabel(room) {
   if (isDuelRoom(room)) {
     const duelLabels = {
       ROUND_1: "ラウンド1 / 2：3往復チャット",
-      ROUND_3: "ラウンド2 / 2：AI判定",
+      ROUND_3: "ラウンド2 / 2：正体判定",
       RESULT: "結果",
       CLOSED: "無効試合"
     };
@@ -784,7 +840,7 @@ function duelStageTitle(room) {
   }
   const labels = {
     ROUND_2: room.currentTurn?.turnType === "DIRECTED_ANSWER" ? "質問への回答" : "質問",
-    ROUND_3: "AI判定"
+    ROUND_3: "正体判定"
   };
   return labels[room.status] ?? phaseLabel(room);
 }
@@ -832,6 +888,15 @@ function roleLabel(role) {
   return labels[role] ?? role;
 }
 
+function duelRoleLabel(duelRole) {
+  const labels = {
+    SPOTTER: "見破る側",
+    PRETENDER: "AIのふり",
+    AI: "AI"
+  };
+  return labels[duelRole] ?? duelRole ?? "1:1";
+}
+
 function turnTimingHtml(room) {
   const seconds = remainingSeconds(room.phaseEndsAt);
   return `
@@ -859,7 +924,7 @@ function remainingSeconds(iso) {
 }
 
 function updateCountdowns() {
-  const seconds = remainingSeconds(state.room?.phaseEndsAt);
+  const seconds = remainingSeconds(state.room?.phaseEndsAt ?? state.me?.duelQueue?.resolveAt);
   const countdowns = document.querySelectorAll("[data-countdown]");
   for (const countdown of countdowns) {
     countdown.textContent = `${seconds}秒`;
@@ -924,10 +989,10 @@ document.addEventListener("click", async (event) => {
     return;
   }
   const action = button.dataset.action;
-  const voteTarget = button.dataset.vote;
+    const voteTarget = button.dataset.vote;
   try {
     if (action === "start") {
-      await api("/api/match", { method: "POST", body: { guestToken: state.token } });
+      await api("/api/pretend", { method: "POST", body: { guestToken: state.token } });
       await refresh();
     } else if (action === "start-duel") {
       await api("/api/duel", { method: "POST", body: { guestToken: state.token } });
@@ -949,7 +1014,12 @@ document.addEventListener("click", async (event) => {
       await roomAction("leave", {});
       await refresh();
     } else if (action === "play-again") {
-      const nextMatchPath = state.room?.mode === "DUEL" ? "/api/duel" : "/api/match";
+      const nextMatchPath =
+        state.room?.mode === "DUEL"
+          ? state.room?.myParticipant?.duelRole === "PRETENDER"
+            ? "/api/pretend"
+            : "/api/duel"
+          : "/api/match";
       await roomAction("leave", {});
       await api(nextMatchPath, { method: "POST", body: { guestToken: state.token } });
       await refresh();
@@ -1059,8 +1129,10 @@ function resultShareText() {
   const winner = room.result.winnerTeam === "HUMAN" ? "人間陣営" : "AI陣営";
   if (isDuelRoom(room)) {
     const judgement = room.result.duelJudgement;
-    const outcome = judgement?.correct ? "判定成功" : "判定失敗";
-    return `AI判定 結果：${outcome}。AIは${participantLabel(ai)}。判定は${duelJudgementLabel(judgement?.judgement)}でした。`;
+    const outcome = room.result.participantResult?.won ? "勝利" : "敗北";
+    const role = duelRoleLabel(room.myParticipant.duelRole);
+    const truth = room.myParticipant.duelRole === "PRETENDER" ? "自分は人間" : ai ? "相手はAI" : "相手は人間";
+    return `1:1判定 結果：${outcome}。役割は${role}。${truth}。判定は${duelJudgementLabel(judgement?.judgement)}でした。`;
   }
   const voteThreshold = room.result.voteThreshold ?? room.voteThreshold ?? 2;
   const aiText = isDuelRoom(room) ? participantLabel(ai) : `「${ai?.displayName}」`;

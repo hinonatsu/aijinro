@@ -12,7 +12,8 @@ import {
   joinQueue,
   leaveRoom,
   reportTarget,
-  startDuelMatch,
+  startPretenderMatch,
+  startSpotterMatch,
   submitAction,
   submitVote
 } from "./game.js";
@@ -90,7 +91,12 @@ async function handleApi(req, res, url) {
 
   if (req.method === "POST" && url.pathname === "/api/duel") {
     const body = await readBody(req);
-    return sendJson(res, startDuelMatch(body.guestToken));
+    return sendJson(res, startSpotterMatch(body.guestToken));
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/pretend") {
+    const body = await readBody(req);
+    return sendJson(res, startPretenderMatch(body.guestToken));
   }
 
   if (req.method === "POST" && url.pathname === "/api/match/cancel") {

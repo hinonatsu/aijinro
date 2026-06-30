@@ -385,7 +385,7 @@ test("1:1練習はAI判定後に投票を挟まず結果へ進む", async () => 
   await testOnly.finalizeCurrentTurn(room);
 
   assert.equal(room.status, RoomStatus.RESULT);
-  assert.equal(room.result.winnerTeam, "HUMAN");
+  assert.equal(room.result.winnerTeam, null);
   assert.equal(room.result.aiParticipantId, ai.id);
   assert.equal(room.result.aiVotes, null);
   assert.equal(room.result.voteThreshold, null);
@@ -393,12 +393,17 @@ test("1:1練習はAI判定後に投票を挟まず結果へ進む", async () => 
   assert.equal(room.result.duelJudgement.judgement, DuelJudgement.AI);
   assert.equal(room.result.duelJudgement.correct, true);
   assert.equal(room.result.duelJudgements.length, 1);
+  assert.equal(room.result.participantResults.length, 1);
+  assert.equal(room.result.participantResults[0].participantId, human.id);
+  assert.equal(room.result.participantResults[0].won, true);
   assert.equal(room.votes.length, 0);
 
   const state = getRoomState(user.guestToken, room.id);
   assert.equal(state.result.duelJudgement.judgement, DuelJudgement.AI);
   assert.equal(state.result.duelJudgement.correct, true);
   assert.equal(state.result.duelJudgements.length, 1);
+  assert.equal(state.result.participantResult.won, true);
+  assert.equal(state.result.participantResults.length, 1);
   assert.equal(state.result.voteThreshold, null);
   assert.equal(state.votes.length, 0);
 });
