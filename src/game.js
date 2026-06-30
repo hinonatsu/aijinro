@@ -434,7 +434,7 @@ function createRoomFromUsers(users, options = {}) {
   addSystemMessage(
     room,
     isDuel
-      ? "1:1練習を開始します。AIと3ラウンド話して、最後に投票します。"
+      ? "AIか人間かわからない相手と3ターン話して最後に投票します。"
       : "3人が揃いました。AI参加者を追加して試合を開始します。"
   );
   store.rooms.set(room.id, room);
@@ -733,9 +733,10 @@ async function finalizeCurrentTurn(room) {
   if (room.status === RoomStatus.ROUND_3) {
     const target = participantById(room, draft.targetParticipantId) ?? chooseValidAITarget(room, participant, null);
     const reason = draft.text || "理由なし";
+    const targetLabel = room.mode === RoomMode.DUEL ? "相手" : target.displayName;
     const finalDraft = {
       ...draft,
-      text: `AIだと思う人：${target.displayName}\n理由：${reason}`
+      text: `AIだと思う人：${targetLabel}\n理由：${reason}`
     };
     await publishDraft(room, participant, finalDraft, {
       round: 3,
@@ -895,6 +896,7 @@ function sanitizeRoomForParticipant(room, viewer) {
         turnType: room.turnType,
         targetParticipantId: room.currentQuestion?.targetParticipantId ?? null,
         targetDisplayName: participantById(room, room.currentQuestion?.targetParticipantId)?.displayName ?? null,
+        askerParticipantId: room.currentQuestion?.askerId ?? null,
         askerDisplayName: participantById(room, room.currentQuestion?.askerId)?.displayName ?? null
       }
     : null;

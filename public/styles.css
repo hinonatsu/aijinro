@@ -180,6 +180,10 @@ body.home-view {
   display: none;
 }
 
+.duel-view .session-pill {
+  display: none;
+}
+
 .home-view .view {
   min-height: 0;
   display: grid;
@@ -533,36 +537,103 @@ body.home-view {
 .chat-log {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   max-height: calc(100dvh - 340px);
   overflow: auto;
-  padding-right: 4px;
+  padding: 2px 10px;
 }
 
 .message {
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  --bubble-bg: #fff;
+  --bubble-border: var(--line);
+  position: relative;
+  align-self: flex-start;
+  max-width: min(76%, 560px);
+  border: 1px solid var(--bubble-border);
+  border-radius: 18px;
+  border-bottom-left-radius: 6px;
   padding: 10px 12px;
-  background: #fff;
+  background: var(--bubble-bg);
+  box-shadow: 0 1px 1px rgba(17, 19, 24, 0.06);
+}
+
+.message::after {
+  content: "";
+  position: absolute;
+  bottom: 8px;
+  width: 11px;
+  height: 11px;
+  background: var(--bubble-bg);
+  border-color: var(--bubble-border);
+  border-style: solid;
+  transform: rotate(45deg);
+}
+
+.message.other::after {
+  left: -5px;
+  border-width: 0 0 1px 1px;
+}
+
+.message.own {
+  --bubble-bg: #dcfce7;
+  --bubble-border: #bbf7d0;
+  align-self: flex-end;
+  border-bottom-right-radius: 6px;
+  border-bottom-left-radius: 18px;
+}
+
+.message.own::after {
+  right: -5px;
+  border-width: 1px 1px 0 0;
 }
 
 .message.system {
-  background: var(--panel-soft);
+  --bubble-bg: #eef1f4;
+  --bubble-border: transparent;
+  align-self: center;
+  max-width: 86%;
+  border: 0;
+  border-radius: 999px;
+  padding: 6px 12px;
   color: var(--muted);
+  text-align: center;
+  box-shadow: none;
+}
+
+.message.system::after {
+  display: none;
+}
+
+.message.system .message-head {
+  display: none;
 }
 
 .message.blocked {
-  background: var(--danger-soft);
-  border-color: #ffd1ca;
+  --bubble-bg: var(--danger-soft);
+  --bubble-border: #ffd1ca;
+  color: var(--danger);
 }
 
 .message-head {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 10px;
   margin-bottom: 5px;
   color: var(--muted);
   font-size: 0.84rem;
+}
+
+.message.own .message-head {
+  flex-direction: row-reverse;
+}
+
+.message.own .message-head strong {
+  color: var(--teal-dark);
+}
+
+.message.blocked .message-head {
+  color: var(--danger);
 }
 
 .message .ghost[data-report-message],
@@ -935,10 +1006,16 @@ body.home-view {
   .chat-log {
     max-height: 34dvh;
     gap: 8px;
+    padding: 2px 7px;
   }
 
   .message {
+    max-width: 88%;
     padding: 8px 10px;
+  }
+
+  .message.system {
+    max-width: 92%;
   }
 
   .message-head {

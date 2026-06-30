@@ -106,6 +106,7 @@ function syncViewMode() {
   document.body.classList.toggle("queue-view", isQueue);
   document.body.classList.toggle("room-view", Boolean(state.room));
   document.body.classList.toggle("game-view", Boolean(state.room && fixedActionStatuses.has(state.room.status)));
+  document.body.classList.toggle("duel-view", Boolean(state.room?.mode === "DUEL"));
 }
 
 function renderHome() {
@@ -165,7 +166,7 @@ function renderRoleReveal() {
     state.room.myParticipant.role === "AI_COLLABORATOR"
       ? `AIは「${state.room.knownAI?.displayName ?? "不明"}」です。AIに${voteThreshold}票以上入らないよう議論を誘導してください。`
       : isDuel
-        ? "1:1練習です。相手はAIです。3ラウンド話して最後に投票します。"
+        ? "AIか人間かわからない相手と3ターン話して最後に投票します。"
         : "この4人の中にAIが1体います。会話からAIを見抜いてください。";
   const ready = state.room.myParticipant.roleReady;
   const readyText = `${state.room.readiness?.roleReadyCount ?? 0} / ${state.room.readiness?.humanCount ?? 3}`;
@@ -220,10 +221,11 @@ function turnPanel() {
   const room = state.room;
   const isMyTurn = room.currentTurn?.participantId === room.myParticipant.id;
   if (!isMyTurn) {
+    const currentTurnLabel = participantLabelById(room.currentTurn?.participantId, room.currentTurn?.displayName ?? "相手");
     return `
       <section class="input-panel">
         <strong>待機中</strong>
-        <p class="muted">現在は ${escapeHtml(room.currentTurn?.displayName ?? "相手")} のターンです。</p>
+        <p class="muted">現在は ${escapeHtml(currentTurnLabel)} のターンです。</p>
       </section>
     `;
   }
@@ -265,7 +267,8 @@ function votePanel() {
   const buttons = room.participants
     .map((participant) => {
       const disabled = participant.id === room.myParticipant.id || voted ? "disabled" : "";
-      return `<button class="vote-button" ${disabled} data-vote="${participant.id}">${avatar(participant.displayName)}${escapeHtml(participant.displayName)}</button>`;
+      const label = participantLabel(participant);
+      return `<button class="vote-button" ${disabled} data-vote="${participant.id}">${avatar(label)}${escapeHtml(label)}</button>`;
     })
     .join("");
   return `
@@ -282,7 +285,11 @@ function renderResult() {
   const ai = room.participants.find((participant) => participant.id === room.result?.aiParticipantId);
   const collaborator = room.participants.find((participant) => participant.id === room.result?.collaboratorParticipantId);
   const voteThreshold = room.result?.voteThreshold ?? room.voteThreshold ?? 2;
-  const collaboratorText = collaborator ? `AI協力者は「${escapeHtml(collaborator.displayName)}」でした。` : "";
+  const isDuel = isDuelRoom(room);
+  const aiText = isDuel
+    ? `AIは${escapeHtml(participantLabel(ai))}でした。`
+    : `AIは「${escapeHtml(ai?.displayName ?? "")}」でした。`;
+  const collaboratorText = !isDuel && collaborator ? `AI協力者は「${escapeHtml(collaborator.displayName)}」でした。` : "";
   const winner =
     room.status === "CLOSED"
       ? "試合は無効です"
@@ -295,14 +302,14 @@ function renderResult() {
       <h2>${winner}</h2>
       ${
         room.result
-          ? `<p>AIは「${escapeHtml(ai?.displayName ?? "")}」でした。${collaboratorText}</p>
+          ? `<p>${aiText}${collaboratorText}</p>
              <p>AIに入った票：${room.result.aiVotes}票 / 必要：${voteThreshold}票</p>`
           : ""
       }
       <div class="participant-list">${participantsHtml()}</div>
       <h3>投票結果</h3>
       <div class="participant-list">
-        ${room.votes.map((vote) => `<div class="participant"><span></span><span>${escapeHtml(vote.voterDisplayName)} → ${escapeHtml(vote.targetDisplayName)}</span><span class="badge">${vote.auto ? "自動" : "投票"}</span></div>`).join("")}
+        ${room.votes.map((vote) => `<div class="participant"><span></span><span>${escapeHtml(voteLabel(vote))}</span><span class="badge">${vote.auto ? "自動" : "投票"}</span></div>`).join("")}
       </div>
       <section class="chat-panel">
         <h3>チャットログ</h3>
@@ -355,10 +362,11 @@ function participantsHtml() {
   return state.room.participants
     .map((participant) => {
       const role = participant.role ? `<span class="badge">${roleLabel(participant.role)}</span>` : `<button class="ghost" data-report-participant="${participant.id}">通報</button>`;
+      const label = participantLabel(participant);
       return `
         <div class="participant">
-          ${avatar(participant.displayName)}
-          <span>${escapeHtml(participant.displayName)}</span>
+          ${avatar(label)}
+          <span>${escapeHtml(label)}</span>
           ${role}
         </div>
       `;
@@ -372,7 +380,19 @@ function messagesHtml() {
   }
   return state.room.messages
     .map((message) => {
-      const cls = message.kind === "SYSTEM" ? "system" : message.isBlocked ? "blocked" : "";
+      const messageSide =
+        message.kind === "SYSTEM"
+          ? ""
+          : message.participantId === state.room.myParticipant.id
+            ? "own"
+            : "other";
+      const cls = [
+        message.kind === "SYSTEM" ? "system" : "",
+        messageSide,
+        message.isBlocked ? "blocked" : ""
+      ]
+        .filter(Boolean)
+        .join(" ");
       const report =
         message.kind === "CHAT"
           ? `<button class="ghost" data-report-message="${message.id}" data-report-participant="${message.participantId}">通報</button>`
@@ -380,10 +400,10 @@ function messagesHtml() {
       return `
         <article class="message ${cls}">
           <div class="message-head">
-            <strong>${escapeHtml(message.displayName)}</strong>
+            <strong>${escapeHtml(messageSpeaker(message))}</strong>
             ${report}
           </div>
-          <p>${escapeHtml(message.text)}</p>
+          <p>${escapeHtml(scrubDuelNames(message.text))}</p>
         </article>
       `;
     })
@@ -395,14 +415,61 @@ function targetSelectHtml() {
     <select id="targetSelect">
       ${state.room.participants
         .filter((participant) => participant.id !== state.room.myParticipant.id)
-        .map((participant) => `<option value="${participant.id}">${escapeHtml(participant.displayName)}</option>`)
+        .map((participant) => `<option value="${participant.id}">${escapeHtml(participantLabel(participant))}</option>`)
         .join("")}
     </select>
   `;
 }
 
-function avatar(name) {
-  return `<span class="avatar">${escapeHtml(Array.from(name)[0] ?? "?")}</span>`;
+function isDuelRoom(room = state.room) {
+  return room?.mode === "DUEL";
+}
+
+function participantLabel(participant) {
+  if (!participant) {
+    return isDuelRoom() ? "相手" : "";
+  }
+  return participantLabelById(participant.id, participant.displayName);
+}
+
+function participantLabelById(participantId, fallback = "") {
+  if (!isDuelRoom()) {
+    const participant = state.room?.participants.find((item) => item.id === participantId);
+    return participant?.displayName ?? fallback;
+  }
+  if (!participantId) {
+    return fallback || "相手";
+  }
+  return participantId === state.room.myParticipant.id ? "自分" : "相手";
+}
+
+function messageSpeaker(message) {
+  if (message.kind === "SYSTEM") {
+    return message.displayName;
+  }
+  return participantLabelById(message.participantId, message.displayName);
+}
+
+function scrubDuelNames(text) {
+  if (!isDuelRoom()) {
+    return text;
+  }
+  return state.room.participants.reduce((current, participant) => {
+    if (!participant.displayName) {
+      return current;
+    }
+    return current.replaceAll(participant.displayName, participantLabel(participant));
+  }, String(text ?? ""));
+}
+
+function voteLabel(vote) {
+  const voter = participantLabelById(vote.voterParticipantId, vote.voterDisplayName);
+  const target = participantLabelById(vote.targetParticipantId, vote.targetDisplayName);
+  return `${voter} → ${target}`;
+}
+
+function avatar(label) {
+  return `<span class="avatar">${escapeHtml(Array.from(label)[0] ?? "?")}</span>`;
 }
 
 function phaseLabel(room) {
@@ -421,10 +488,11 @@ function turnHeadline(room) {
   if (!room.currentTurn) {
     return phaseLabel(room);
   }
+  const currentTurnLabel = participantLabelById(room.currentTurn.participantId, room.currentTurn.displayName);
   if (room.currentTurn.turnType === "DIRECTED_ANSWER") {
-    return `${room.currentTurn.displayName} が回答`;
+    return `${currentTurnLabel} が回答`;
   }
-  return `${room.currentTurn.displayName} のターン`;
+  return `${currentTurnLabel} のターン`;
 }
 
 function turnDescription(room) {
@@ -432,7 +500,8 @@ function turnDescription(room) {
     return `お題：${room.topicPrompt}`;
   }
   if (room.status === "ROUND_2" && room.currentTurn?.turnType === "DIRECTED_ANSWER") {
-    return `${room.currentTurn.askerDisplayName} からの質問に答えます。`;
+    const askerLabel = participantLabelById(room.currentTurn.askerParticipantId, room.currentTurn.askerDisplayName);
+    return `${askerLabel} からの質問に答えます。`;
   }
   if (room.status === "ROUND_2") {
     return `相手を1人選んで、${MESSAGE_LIMIT}文字以内で質問します。入力済みでも${TURN_SECONDS}秒ちょうどで送信されます。`;
@@ -675,7 +744,8 @@ function resultShareText() {
   const ai = room.participants.find((participant) => participant.id === room.result.aiParticipantId);
   const winner = room.result.winnerTeam === "HUMAN" ? "人間陣営" : "AI陣営";
   const voteThreshold = room.result.voteThreshold ?? room.voteThreshold ?? 2;
-  return `AI人狼 結果：${winner}の勝利。AIは「${ai?.displayName}」。AIへの票は${room.result.aiVotes}/${voteThreshold}票でした。`;
+  const aiText = isDuelRoom(room) ? participantLabel(ai) : `「${ai?.displayName}」`;
+  return `AI人狼 結果：${winner}の勝利。AIは${aiText}。AIへの票は${room.result.aiVotes}/${voteThreshold}票でした。`;
 }
 
 function escapeHtml(value) {
