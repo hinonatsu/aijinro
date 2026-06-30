@@ -19,6 +19,8 @@
   --shell-gutter: max(16px, calc((100vw - 1120px) / 2));
   --game-sidebar: 300px;
   --game-gap: 16px;
+  --fixed-input-space: 188px;
+  --fixed-input-gap: 16px;
   font-family:
     Inter,
     "Segoe UI",
@@ -68,8 +70,27 @@ button:disabled {
   padding: 18px 0 36px;
 }
 
+body.game-view {
+  height: 100dvh;
+  overflow: hidden;
+}
+
 .game-view .app-shell {
-  padding-bottom: 188px;
+  height: 100dvh;
+  min-height: 0;
+  padding-bottom: var(--fixed-input-space);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.game-view .topbar {
+  flex: 0 0 auto;
+}
+
+.game-view .view {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .topbar {
@@ -592,6 +613,46 @@ body.home-view {
   padding: 2px 10px;
 }
 
+.game-view .game-layout,
+.game-view .duel-game-layout {
+  height: 100%;
+  min-height: 0;
+}
+
+.game-view .game-layout {
+  align-items: stretch;
+}
+
+.game-view .duel-game-layout {
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.game-view .game-main {
+  height: 100%;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.game-view .game-layout > .side-panel {
+  max-height: 100%;
+  overflow: auto;
+}
+
+.game-view .chat-panel {
+  min-height: 0;
+  overflow: hidden;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.game-view .chat-log {
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding-bottom: var(--fixed-input-gap);
+}
+
 .message {
   --bubble-bg: #fff;
   --bubble-border: var(--line);
@@ -895,7 +956,7 @@ body.home-view {
 }
 
 .game-view .toast {
-  bottom: 178px;
+  bottom: var(--fixed-input-space);
 }
 
 .muted {
@@ -948,6 +1009,11 @@ body.home-view {
 }
 
 @media (max-width: 540px) {
+  :root {
+    --fixed-input-space: 214px;
+    --fixed-input-gap: 8px;
+  }
+
   body {
     min-height: 100dvh;
   }
@@ -958,7 +1024,7 @@ body.home-view {
   }
 
   .game-view .app-shell {
-    padding-bottom: 214px;
+    padding-bottom: var(--fixed-input-space);
   }
 
   .topbar {
@@ -1126,6 +1192,11 @@ body.home-view {
     max-height: 34dvh;
     gap: 8px;
     padding: 2px 7px;
+  }
+
+  .game-view .chat-log {
+    max-height: none;
+    padding-bottom: var(--fixed-input-gap);
   }
 
   .message {

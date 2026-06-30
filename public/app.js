@@ -14,8 +14,12 @@ const TURN_SECONDS = 30;
 const app = document.querySelector("#app");
 const sessionPill = document.querySelector("#sessionPill");
 const toast = document.querySelector("#toast");
+let chatLayoutFrame = 0;
+let fixedInputObserver = null;
+let observedFixedInputPanel = null;
 
 init().catch(showError);
+window.addEventListener("resize", queueChatLayoutSync);
 
 async function init() {
   await ensureSession();
@@ -57,6 +61,7 @@ async function refresh(options = {}) {
     }
     render();
     updateCountdowns();
+    queueChatLayoutSync();
   } catch (error) {
     if (recoverSession && isSessionError(error)) {
       await resetSession();
@@ -79,6 +84,55 @@ function connectEvents() {
     state.eventSource.close();
     setTimeout(connectEvents, 1600);
   };
+}
+
+function queueChatLayoutSync() {
+  cancelAnimationFrame(chatLayoutFrame);
+  chatLayoutFrame = requestAnimationFrame(() => {
+    syncFixedInputSpace();
+    observeFixedInputPanel();
+    requestAnimationFrame(scrollChatToLatest);
+  });
+}
+
+function syncFixedInputSpace() {
+  const inputPanel = document.querySelector(".game-main > .input-panel");
+  if (!document.body.classList.contains("game-view") || !inputPanel) {
+    document.documentElement.style.removeProperty("--fixed-input-space");
+    return;
+  }
+  const rect = inputPanel.getBoundingClientRect();
+  const bottomSpace = Math.max(0, window.innerHeight - rect.bottom);
+  const gap = window.matchMedia("(max-width: 540px)").matches ? 8 : 16;
+  const fixedInputSpace = Math.ceil(rect.height + bottomSpace + gap);
+  document.documentElement.style.setProperty("--fixed-input-space", `${fixedInputSpace}px`);
+  document.documentElement.style.setProperty("--fixed-input-gap", `${gap}px`);
+}
+
+function observeFixedInputPanel() {
+  const inputPanel = document.querySelector(".game-main > .input-panel");
+  if (!("ResizeObserver" in window) || observedFixedInputPanel === inputPanel) {
+    return;
+  }
+  if (fixedInputObserver) {
+    fixedInputObserver.disconnect();
+  }
+  observedFixedInputPanel = inputPanel;
+  fixedInputObserver = null;
+  if (!inputPanel) {
+    return;
+  }
+  fixedInputObserver = new ResizeObserver(() => {
+    syncFixedInputSpace();
+    scrollChatToLatest();
+  });
+  fixedInputObserver.observe(inputPanel);
+}
+
+function scrollChatToLatest() {
+  for (const chatLog of document.querySelectorAll("[data-chat-log]")) {
+    chatLog.scrollTop = chatLog.scrollHeight;
+  }
 }
 
 function render() {
@@ -225,7 +279,7 @@ function renderGameShell(panelHtml) {
         </div>
         <section class="chat-panel">
           <h2>チャットログ</h2>
-          <div class="chat-log">${messagesHtml()}</div>
+          <div class="chat-log" data-chat-log>${messagesHtml()}</div>
         </section>
         ${panelHtml}
       </section>
@@ -251,7 +305,7 @@ function renderDuelGameShell(panelHtml) {
         </div>
         <section class="chat-panel">
           <h2>チャットログ</h2>
-          <div class="chat-log">${messagesHtml()}</div>
+          <div class="chat-log" data-chat-log>${messagesHtml()}</div>
         </section>
         ${panelHtml}
       </section>
@@ -356,7 +410,7 @@ function renderResult() {
       </div>
       <section class="chat-panel">
         <h3>チャットログ</h3>
-        <div class="chat-log">${messagesHtml()}</div>
+        <div class="chat-log" data-chat-log>${messagesHtml()}</div>
       </section>
       <div class="action-row">
         <button class="primary" data-action="play-again">もう一度遊ぶ</button>
