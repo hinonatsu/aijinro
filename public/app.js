@@ -279,7 +279,6 @@ function turnPanel() {
         <label>質問する相手${targetSelectHtml()}</label>
         <label>質問<textarea id="turnText" maxlength="${MESSAGE_LIMIT}" placeholder="${MESSAGE_LIMIT}文字以内で質問"></textarea></label>
         <div class="compact-row input-meta-row"><span id="counter" class="counter">0 / ${MESSAGE_LIMIT}</span>${turnTimingHtml(room)}</div>
-        <button class="primary turn-save-button" data-action="send-question">下書きを保存</button>
       </section>
     `;
   }
@@ -292,7 +291,6 @@ function turnPanel() {
         ${targetField}
         <label>${reasonLabel}<textarea id="turnText" maxlength="${MESSAGE_LIMIT}" placeholder="${MESSAGE_LIMIT}文字以内で理由を書く"></textarea></label>
         <div class="compact-row input-meta-row"><span id="counter" class="counter">0 / ${MESSAGE_LIMIT}</span>${turnTimingHtml(room)}</div>
-        <button class="primary turn-save-button" data-action="send-final">下書きを保存</button>
       </section>
     `;
   }
@@ -301,7 +299,6 @@ function turnPanel() {
     <section class="input-panel">
       <label>${room.status === "ROUND_1" ? "お題への回答" : "回答"}<textarea id="turnText" maxlength="${MESSAGE_LIMIT}" placeholder="${MESSAGE_LIMIT}文字以内で入力"></textarea></label>
       <div class="compact-row input-meta-row"><span id="counter" class="counter">0 / ${MESSAGE_LIMIT}</span>${turnTimingHtml(room)}</div>
-      <button class="primary turn-save-button" data-action="${room.status === "ROUND_1" ? "send-round1" : "send-answer"}">下書きを保存</button>
     </section>
   `;
 }
@@ -603,8 +600,18 @@ function roleLabel(role) {
 }
 
 function turnTimingHtml(room) {
-  const sendTiming = `<span class="muted">${TURN_SECONDS}秒ちょうどで送信されます</span>`;
-  return isDuelRoom(room) ? `${turnCountdownHtml(room)}${sendTiming}` : sendTiming;
+  const seconds = remainingSeconds(room.phaseEndsAt);
+  return `
+    <span class="turn-input-timer" role="timer" aria-label="残り時間">
+      <span class="turn-timer-head">
+        <span class="turn-countdown"><strong>残り時間</strong><span data-countdown>${seconds}秒</span></span>
+        <span class="auto-send-label">自動送信</span>
+      </span>
+      <span class="turn-progress" role="progressbar" aria-label="残り時間" aria-valuemin="0" aria-valuemax="${TURN_SECONDS}" aria-valuenow="${seconds}" data-turn-progressbar>
+        <span data-turn-progress></span>
+      </span>
+    </span>
+  `;
 }
 
 function turnCountdownHtml(room) {
@@ -624,23 +631,23 @@ function updateCountdowns() {
   for (const countdown of countdowns) {
     countdown.textContent = `${seconds}秒`;
   }
-  updateTurnSaveButtons(seconds);
+  updateTurnProgress(seconds);
 }
 
-function updateTurnSaveButtons(seconds) {
-  const buttons = document.querySelectorAll(".turn-save-button");
-  if (!buttons.length) {
+function updateTurnProgress(seconds) {
+  const progressBars = document.querySelectorAll("[data-turn-progress]");
+  if (!progressBars.length) {
     return;
   }
   const endsAt = new Date(state.room?.phaseEndsAt).getTime();
   const remainingMs = Number.isFinite(endsAt) ? Math.max(0, endsAt - Date.now()) : TURN_SECONDS * 1000;
-  const progress = Math.min(100, Math.max(0, (1 - remainingMs / (TURN_SECONDS * 1000)) * 100));
-  const remaining = typeof seconds === "number" ? seconds : TURN_SECONDS;
-  const label = `下書きを保存。残り${remaining}秒で送信されます。`;
-  for (const button of buttons) {
-    button.style.setProperty("--turn-progress", `${progress.toFixed(1)}%`);
-    button.setAttribute("aria-label", label);
-    button.title = label;
+  const remainingPercent = Math.min(100, Math.max(0, (remainingMs / (TURN_SECONDS * 1000)) * 100));
+  const remainingSecondsValue = typeof seconds === "number" ? seconds : TURN_SECONDS;
+  for (const progressBar of progressBars) {
+    progressBar.style.width = `${remainingPercent.toFixed(1)}%`;
+  }
+  for (const progressWrap of document.querySelectorAll("[data-turn-progressbar]")) {
+    progressWrap.setAttribute("aria-valuenow", String(remainingSecondsValue));
   }
 }
 
@@ -707,14 +714,6 @@ document.addEventListener("click", async (event) => {
       showToast("招待URLをコピーしました。");
     } else if (action === "role-ack") {
       await roomAction("action", { actionType: "ROLE_ACK" });
-    } else if (action === "send-round1") {
-      await sendTextAction("ROUND_1_ANSWER");
-    } else if (action === "send-answer") {
-      await sendTextAction("DIRECTED_ANSWER");
-    } else if (action === "send-question") {
-      await sendTextAction("DIRECTED_QUESTION", selectedTargetParticipantId());
-    } else if (action === "send-final") {
-      await sendTextAction("FINAL_SUSPICION", selectedTargetParticipantId());
     } else if (action === "leave") {
       await roomAction("leave", {});
       await refresh();
@@ -743,11 +742,6 @@ document.addEventListener("click", async (event) => {
     showError(error);
   }
 });
-
-async function sendTextAction(actionType, targetParticipantId = null) {
-  await saveDraftAction(actionType, targetParticipantId, true);
-  showToast(`下書きを保存しました。${TURN_SECONDS}秒で送信されます。`);
-}
 
 function selectedTargetParticipantId() {
   return document.querySelector("#targetSelect")?.value ?? null;
