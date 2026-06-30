@@ -485,6 +485,20 @@ function updateTurnSaveButtons(seconds) {
   }
 }
 
+async function goHome() {
+  state.showRules = false;
+  if (state.room) {
+    await roomAction("leave", {});
+    return;
+  }
+  if (state.me?.queuePosition) {
+    await api("/api/match/cancel", { method: "POST", body: { guestToken: state.token } });
+    await refresh();
+    return;
+  }
+  await refresh();
+}
+
 document.addEventListener("input", (event) => {
   if (event.target.id !== "turnText") {
     return;
@@ -521,6 +535,8 @@ document.addEventListener("click", async (event) => {
     } else if (action === "start-duel") {
       await api("/api/duel", { method: "POST", body: { guestToken: state.token } });
       await refresh();
+    } else if (action === "go-home") {
+      await goHome();
     } else if (action === "toggle-rules") {
       state.showRules = !state.showRules;
       render();
