@@ -170,16 +170,20 @@ function renderRoleReveal() {
         : "この4人の中にAIが1体います。会話からAIを見抜いてください。";
   const ready = state.room.myParticipant.roleReady;
   const readyText = `${state.room.readiness?.roleReadyCount ?? 0} / ${state.room.readiness?.humanCount ?? 3}`;
+  const participantListHtml = isDuel ? "" : `<div class="participant-list">${participantsHtml()}</div>`;
+  const actionButtonsHtml = isDuel
+    ? `<button class="primary" data-action="role-ack" ${ready ? "disabled" : ""}>${ready ? "ほかのプレイヤー待ち" : "確認して待つ"}</button>`
+    : `<button class="primary" data-action="role-ack" ${ready ? "disabled" : ""}>${ready ? "ほかのプレイヤー待ち" : "確認して待つ"}</button>
+        <button class="ghost" data-action="leave">退出</button>`;
   app.innerHTML = `
     <section class="stage-panel">
       <p class="role-title">${roleLabel(state.room.myParticipant.role)}</p>
       <h2>${roleLabel(state.room.myParticipant.role)}として参加します</h2>
       <p>${escapeHtml(roleText)}</p>
       ${ready ? `<p class="phase-chip">確認済み。ほかのプレイヤー待ち ${readyText}</p>` : `<p class="muted">全員が確認すると、ラウンド1が始まります。</p>`}
-      <div class="participant-list">${participantsHtml()}</div>
+      ${participantListHtml}
       <div class="action-row">
-        <button class="primary" data-action="role-ack" ${ready ? "disabled" : ""}>${ready ? "ほかのプレイヤー待ち" : "確認して待つ"}</button>
-        <button class="ghost" data-action="leave">退出</button>
+        ${actionButtonsHtml}
       </div>
     </section>
   `;
