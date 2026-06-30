@@ -438,10 +438,10 @@ function signalGrid(active = 1) {
           return `
             <div class="signal-tile ${isAi ? "ai" : ""}" style="opacity:${opacity}">
               <svg viewBox="0 0 48 48">
-                <rect x="8" y="10" width="32" height="26" rx="7" fill="${isAi ? "#f7f2e8" : "#15171c"}" />
-                <circle cx="18" cy="23" r="3" fill="${isAi ? "#ff6b57" : "#14b8a6"}" />
-                <circle cx="30" cy="23" r="3" fill="${isAi ? "#ff6b57" : "#14b8a6"}" />
-                <path d="M17 31h14" stroke="${isAi ? "#15171c" : "#f7f2e8"}" stroke-width="3" stroke-linecap="round" />
+                <rect x="8" y="10" width="32" height="26" rx="7" fill="${isAi ? "#ffffff" : "#111318"}" />
+                <circle cx="18" cy="23" r="3" fill="${isAi ? "#ff6b57" : "#00bff5"}" />
+                <circle cx="30" cy="23" r="3" fill="${isAi ? "#ff6b57" : "#00bff5"}" />
+                <path d="M17 31h14" stroke="${isAi ? "#111318" : "#ffffff"}" stroke-width="3" stroke-linecap="round" />
               </svg>
             </div>
           `;
