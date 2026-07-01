@@ -116,6 +116,7 @@ test("1:1判定チャットでは人間らしさ指示を送り、疑い先をnu
   assert.match(body.instructions, /ROUND_1_ANSWER/);
   assert.match(body.instructions, /replyToがあれば必ずその発言への返答/);
   assert.match(body.instructions, /整いすぎている印象を避ける/);
+  assert.match(body.instructions, /ぶっきらぼうに見えない/);
   assert.equal(input.selfDisplayName, "ねこ");
   assert.deepEqual(input.ownRecentMessages, ["パンだけ、かなり適当"]);
   assert.deepEqual(input.replyTo, {
@@ -179,6 +180,8 @@ test("AIだと疑われた時の返しは固定文にしない", async () => {
   Math.random = () => 0.99;
   const second = await generateAIMessage(input);
 
+  assert.equal(first.text, "まあ怪しく見えたなら分かる");
+  assert.equal(second.text, "んー、普通に返しただけだけど");
   assert.notEqual(first.text, second.text);
   assert.ok(Array.from(first.text).length <= 30);
   assert.ok(Array.from(second.text).length <= 30);
