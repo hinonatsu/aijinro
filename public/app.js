@@ -247,7 +247,6 @@ function renderQueue() {
     })}
     <div class="home-layout">
       <section class="intro-panel">
-        ${queuePulseHtml()}
         <div class="home-copy">
           <h2>人間プレイヤーを探しています</h2>
           <p>現在 ${Math.min(count, 3)} / 3 人。3人集まるとAIを追加してゲームが始まります。</p>
@@ -279,7 +278,6 @@ function renderDuelQueue() {
       })}
       <div class="home-layout">
         <section class="intro-panel">
-          ${queuePulseHtml()}
           <div class="home-copy">
             <h2>判定役を待っています</h2>
             <p>人間プレイヤーが「AIを見破る」を選ぶと、1:1の試合が始まります。</p>
@@ -320,7 +318,6 @@ function renderDuelQueue() {
     })}
     <div class="home-layout">
       <section class="intro-panel">
-        ${queuePulseHtml()}
         <div class="home-copy">
           <h2>相手を探しています</h2>
           <p>人間プレイヤーが見つからなければ、30秒後にAIと試合が始まります。</p>
@@ -804,16 +801,6 @@ function dashboardParticipantsHtml(room) {
       `;
     })
     .join("");
-}
-
-function queuePulseHtml() {
-  return `
-    <div class="queue-pulse" aria-hidden="true">
-      <span></span>
-      <span></span>
-      <span></span>
-    </div>
-  `;
 }
 
 function statsGrid(stats) {

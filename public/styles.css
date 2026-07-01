@@ -343,32 +343,6 @@ body.home-view {
   position: relative;
 }
 
-.queue-pulse {
-  width: min(148px, 44vw);
-  height: 18px;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  margin-bottom: 22px;
-}
-
-.queue-pulse span {
-  border-radius: 999px;
-  background: var(--ink);
-  opacity: 0.34;
-  animation: queue-pulse-step 1100ms ease-in-out infinite;
-}
-
-.queue-pulse span:nth-child(2) {
-  background: var(--accent);
-  animation-delay: 140ms;
-}
-
-.queue-pulse span:nth-child(3) {
-  background: var(--danger);
-  animation-delay: 280ms;
-}
-
 .home-copy {
   position: relative;
   max-width: 600px;
@@ -1550,19 +1524,6 @@ body.is-transitioning.is-transition-opening .loader {
   }
 }
 
-@keyframes queue-pulse-step {
-  0%,
-  100% {
-    opacity: 0.34;
-    transform: scaleX(0.72);
-  }
-
-  50% {
-    opacity: 1;
-    transform: scaleX(1);
-  }
-}
-
 @keyframes waiting-meter-sheen {
   100% {
     transform: translateX(100%);
@@ -1594,7 +1555,6 @@ body.is-transitioning.is-transition-opening .loader {
 @media (prefers-reduced-motion: reduce) {
   .view > .intro-panel:has(> h2:only-child)::before,
   .view > .intro-panel:has(> h2:only-child)::after,
-  .queue-pulse span,
   .queue-view .queue-meter::after,
   .queue-view .intro-panel:not(:has([data-countdown])):not(:has([data-action="copy-invite"])) .queue-meter span,
   .duel-role-panel:has(.primary:disabled) .duel-ready-list::after,
