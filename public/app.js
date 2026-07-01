@@ -168,62 +168,11 @@ function syncViewMode() {
   document.body.classList.toggle("duel-view", Boolean(state.room?.mode === "DUEL"));
 }
 
-function rulesSheetHtml() {
-  return `
-    <aside class="rules-sheet" aria-label="ルール">
-      <button class="rules-close" data-action="toggle-rules" aria-label="ルールを閉じる">×</button>
-      <h3>ルール</h3>
-      <ol>
-        <li>短い会話で相手の癖を探ります。</li>
-        <li>AIだと思う相手、または相手の正体を最後に判定します。</li>
-        <li>AIのふりをする側は、人間なのにAIだと思わせれば勝ちです。</li>
-      </ol>
-    </aside>
-  `;
-}
-
-function seatListHtml(active, total, labels = []) {
-  return `
-    <div class="seat-list" aria-label="参加者の席">
-      ${Array.from({ length: total })
-        .map((_, index) => {
-          const occupied = index < active;
-          const label = labels[index] ?? (occupied ? `参加者 ${index + 1}` : "未接続");
-          return `
-            <div class="seat ${occupied ? "is-occupied" : ""}">
-              <span class="seat-dot" aria-hidden="true"></span>
-              <span>${escapeHtml(label)}</span>
-              <strong>${occupied ? "着席" : "空席"}</strong>
-            </div>
-          `;
-        })
-        .join("")}
-    </div>
-  `;
-}
-
 function renderHome() {
   app.innerHTML = `
-    <section class="home-scene" aria-label="遊ぶモードを選択">
-      <div class="scene-copy">
-        <p class="scene-kicker">CHAT DEDUCTION</p>
-        <h2>会話だけで、正体を見抜け。</h2>
-        <p>相手は人間か、それともAIか。短い発言の癖から、最後の一票を決める密室チャットゲームです。</p>
-      </div>
-      <div class="mode-cards">
-        <button class="mode-card mode-card-dark" data-action="start">
-          <span class="mode-card-role">なりすます</span>
-          <strong>AIのふりをする</strong>
-          <span>人間なのに、AIだと思わせる。</span>
-        </button>
-        <button class="mode-card mode-card-light" data-action="start-duel">
-          <span class="mode-card-role">見破る</span>
-          <strong>AIを見破る</strong>
-          <span>会話の違和感から、正体を判定する。</span>
-        </button>
-      </div>
-      <button class="rules-link" data-action="toggle-rules">ルールを見る</button>
-      ${state.showRules ? rulesSheetHtml() : ""}
+    <section class="home-menu" aria-label="遊ぶモードを選択">
+      <button class="home-button home-button-primary" data-action="start">AIのふりをする</button>
+      <button class="home-button home-button-secondary" data-action="start-duel">AIを見破る</button>
     </section>
   `;
 }
@@ -231,21 +180,24 @@ function renderHome() {
 function renderQueue() {
   const count = state.me.queueCount ?? state.me.queuePosition ?? 1;
   app.innerHTML = `
-    <section class="waiting-room">
-      <div class="waiting-head">
-        <p class="scene-kicker">MATCHING</p>
-        <button class="ghost" data-action="copy-invite">招待URLをコピー</button>
-      </div>
-      <div class="waiting-copy">
-        <h2>参加者を待機中</h2>
-        <p>現在 ${Math.min(count, 3)} / 3 人。席が埋まると、AIを1体加えて試合が始まります。</p>
-      </div>
-      ${seatListHtml(Math.min(count, 3), 3)}
-      <div class="thin-meter" aria-hidden="true"><span style="width:${Math.min(100, (count / 3) * 100)}%"></span></div>
-      <div class="action-row waiting-actions">
-        <button class="danger" data-action="cancel-match">キャンセル</button>
-      </div>
-    </section>
+    <div class="home-layout">
+      <section class="intro-panel">
+        ${signalGrid(count)}
+        <div class="home-copy">
+          <h2>人間プレイヤーを探しています</h2>
+          <p>現在 ${Math.min(count, 3)} / 3 人。3人集まるとAIを追加してゲームが始まります。</p>
+          <div class="queue-meter"><span style="width:${Math.min(100, (count / 3) * 100)}%"></span></div>
+          <div class="action-row">
+            <button class="danger" data-action="cancel-match">キャンセル</button>
+            <button class="ghost" data-action="copy-invite">招待URLコピー</button>
+          </div>
+        </div>
+      </section>
+      <aside class="side-panel">
+        <h2>待機中のヒント</h2>
+        <p class="muted">このMVPでは、同じブラウザの別タブでもゲストを作成できます。別タブでプレイ開始を押すと人数が揃います。</p>
+      </aside>
+    </div>
   `;
 }
 
@@ -254,18 +206,24 @@ function renderDuelQueue() {
   const queueResolveAt = state.me.duelQueue?.resolveAt;
   if (isPretender && !queueResolveAt) {
     app.innerHTML = `
-      <section class="waiting-room duel-waiting">
-        <div class="waiting-head">
-          <p class="scene-kicker">DUEL</p>
-          <button class="danger" data-action="cancel-match">キャンセル</button>
-        </div>
-        <div class="waiting-copy">
-          <h2>判定役を待っています</h2>
-          <p>あなたは人間です。相手にAIだと思わせるための、1:1の試合が始まります。</p>
-        </div>
-        ${seatListHtml(1, 2, ["あなた", "判定役"])}
-        <div class="thin-meter is-breathing" aria-hidden="true"><span style="width:55%"></span></div>
-      </section>
+      <div class="home-layout">
+        <section class="intro-panel">
+          ${signalGrid(1)}
+          <div class="home-copy">
+            <h2>判定役を待っています</h2>
+            <p>人間プレイヤーが「AIを見破る」を選ぶと、1:1の試合が始まります。</p>
+            <div class="queue-meter"><span style="width:55%"></span></div>
+            <div class="action-row">
+              <span class="phase-chip">待機中</span>
+              <button class="danger" data-action="cancel-match">キャンセル</button>
+            </div>
+          </div>
+        </section>
+        <aside class="side-panel">
+          <h2>AIのふりをする</h2>
+          <p class="muted">あなたは人間です。会話で相手にAIだと思わせたら勝ちです。</p>
+        </aside>
+      </div>
     `;
     return;
   }
@@ -282,24 +240,29 @@ function renderDuelQueue() {
     ? "あなたは人間です。会話で相手にAIだと思わせたら勝ちです。"
     : "テーマに沿って3往復チャットした後、相手がAIか人間かを判定します。";
   app.innerHTML = `
-    <section class="waiting-room duel-waiting">
-      <div class="waiting-head">
-        <p class="scene-kicker">${escapeHtml(sideTitle)}</p>
-        <button class="danger" data-action="cancel-match">キャンセル</button>
-      </div>
-      <div class="waiting-copy">
-        <h2>${escapeHtml(queueTitle)}</h2>
-        <p>${escapeHtml(queueDescription)}</p>
-      </div>
-      ${seatListHtml(isPretender ? 2 : 1, 2, ["あなた", "相手"])}
-      <div class="duel-countdown">
-        <span>開始まで</span>
-        <strong data-countdown>${seconds}秒</strong>
-      </div>
-      <div class="thin-meter" aria-hidden="true"><span style="width:${progress.toFixed(1)}%"></span></div>
-      <p class="waiting-note">${escapeHtml(sideDescription)}</p>
-    </section>
+    <div class="home-layout">
+      <section class="intro-panel">
+        ${signalGrid(2)}
+        <div class="home-copy">
+          <h2>相手を探しています</h2>
+          <p>人間プレイヤーが見つからなければ、30秒後にAIと試合が始まります。</p>
+          <div class="queue-meter"><span style="width:${progress.toFixed(1)}%"></span></div>
+          <div class="action-row">
+            <span class="phase-chip">開始まで <span data-countdown>${seconds}秒</span></span>
+            <button class="danger" data-action="cancel-match">キャンセル</button>
+          </div>
+        </div>
+      </section>
+      <aside class="side-panel">
+        <h2>AIを見破る</h2>
+        <p class="muted">テーマに沿って3往復チャットした後、相手がAIか人間かを判定します。</p>
+      </aside>
+    </div>
   `;
+  app.querySelector(".home-copy h2").textContent = queueTitle;
+  app.querySelector(".home-copy p").textContent = queueDescription;
+  app.querySelector(".side-panel h2").textContent = sideTitle;
+  app.querySelector(".side-panel .muted").textContent = sideDescription;
 }
 
 function renderRoom() {
@@ -333,30 +296,19 @@ function renderRoleReveal() {
       : "この4人の中にAIが1体います。会話からAIを見抜いてください。";
   const ready = state.room.myParticipant.roleReady;
   const readyText = `${state.room.readiness?.roleReadyCount ?? 0} / ${state.room.readiness?.humanCount ?? 3}`;
+  const roleHeaderHtml = `<p class="role-title">${roleLabel(state.room.myParticipant.role)}</p>
+      <h2>${roleLabel(state.room.myParticipant.role)}として参加します</h2>`;
   const waitingText = "全員が確認すると、ラウンド1が始まります。";
+  const participantListHtml = `<div class="participant-list">${participantsHtml()}</div>`;
   const actionButtonsHtml = `<button class="primary" data-action="role-ack" ${ready ? "disabled" : ""}>${ready ? "ほかのプレイヤー待ち" : "確認して待つ"}</button>
         <button class="ghost" data-action="leave">退出</button>`;
   app.innerHTML = `
-    <section class="role-reveal-screen">
-      <div class="duel-stepper" aria-label="進行">
-        <span class="duel-step is-active">役職確認</span>
-        <span class="duel-step">会話</span>
-        <span class="duel-step">判定</span>
-        <span class="duel-step">結果</span>
-      </div>
-      <div class="role-card">
-        <span class="role-card-label">あなたの役職</span>
-        <strong>${roleLabel(state.room.myParticipant.role)}</strong>
-        <p>${escapeHtml(roleText)}</p>
-      </div>
-      <div class="ready-board">
-        <div>
-          <h2>${roleLabel(state.room.myParticipant.role)}として参加します</h2>
-          <p class="muted">${ready ? `確認済み。ほかのプレイヤー待ち ${readyText}` : waitingText}</p>
-        </div>
-        <div class="participant-strip">${participantStripHtml()}</div>
-      </div>
-      <div class="action-row role-actions">
+    <section class="stage-panel">
+      ${roleHeaderHtml}
+      <p>${escapeHtml(roleText)}</p>
+      ${ready ? `<p class="phase-chip">確認済み。ほかのプレイヤー待ち ${readyText}</p>` : `<p class="muted">${waitingText}</p>`}
+      ${participantListHtml}
+      <div class="action-row">
         ${actionButtonsHtml}
       </div>
     </section>
@@ -382,7 +334,7 @@ function renderDuelRoleReveal() {
     : "確認して待つ";
 
   app.innerHTML = `
-    <section class="role-reveal-screen duel-role-panel">
+    <section class="stage-panel duel-role-panel">
       <button class="ghost duel-leave-button duel-role-leave" data-action="leave">退出</button>
       <div class="duel-stepper" aria-label="進行">
         <span class="duel-step is-active">確認</span>
@@ -390,9 +342,8 @@ function renderDuelRoleReveal() {
         <span class="duel-step">正体判定</span>
         <span class="duel-step">結果</span>
       </div>
-      <div class="role-card duel-role-copy" aria-live="polite">
-        <span class="role-card-label">あなたの役割</span>
-        <strong>${duelRoleLabel(duelRole)}</strong>
+      <div class="duel-role-copy" aria-live="polite">
+        <p class="phase-chip">${duelRoleLabel(duelRole)}</p>
         <h2>${statusTitle}</h2>
         <p class="muted">${statusText}</p>
         <p class="muted">2人が確認すると、ラウンド1が始まります。</p>
@@ -427,75 +378,38 @@ function duelRoleIntroText(duelRole) {
   return "相手がAIか人間かを見破ったら勝ちです。";
 }
 
-function participantStripHtml() {
-  return state.room.participants
-    .map((participant) => {
-      const label = participantLabel(participant);
-      const isMe = participant.id === state.room.myParticipant.id;
-      return `
-        <span class="participant-token ${isMe ? "is-me" : ""}">
-          ${avatar(label)}
-          <span>${escapeHtml(label)}</span>
-        </span>
-      `;
-    })
-    .join("");
-}
-
-function gameStatusBarHtml(room) {
-  const knownAI = room.knownAI ? `<span class="secret-note">AI: ${escapeHtml(room.knownAI.displayName)}</span>` : "";
-  return `
-    <header class="game-status-bar">
-      <div class="round-stack">
-        <strong>${phaseLabel(room)}</strong>
-        <span>${isDuelRoom(room) ? duelTurnLabel(room) || "会話中" : `役職: ${roleLabel(room.myParticipant.role)}`}</span>
-      </div>
-      <div class="participant-strip">${participantStripHtml()}</div>
-      <div class="status-actions">
-        ${knownAI}
-        ${turnCountdownHtml(room)}
-        <button class="ghost room-info-toggle" type="button" data-action="toggle-room-info" aria-label="参加者情報">情報</button>
-        <button class="danger duel-leave-button" data-action="leave">退出</button>
-      </div>
-    </header>
-  `;
-}
-
-function roomInfoDrawerHtml(room) {
-  return `
-    <aside class="room-info-drawer" aria-label="参加者情報">
-      <h3>参加者</h3>
-      <div class="participant-list">${participantsHtml()}</div>
-      <div class="meta-grid">
-        <div class="meta"><strong>残り時間</strong><span data-countdown>${remainingSeconds(room.phaseEndsAt)}秒</span></div>
-        <div class="meta"><strong>状態</strong><span>${phaseLabel(room)}</span></div>
-      </div>
-    </aside>
-  `;
-}
-
 function renderGameShell(panelHtml) {
   const room = state.room;
   if (isDuelRoom(room)) {
     renderDuelGameShell(panelHtml);
     return;
   }
-  const description = turnDescription(room);
   app.innerHTML = `
-    <div class="game-layout conversation-layout">
-      ${gameStatusBarHtml(room)}
+    <div class="game-layout">
+      <aside class="side-panel">
+        <p class="phase-chip">${phaseLabel(room)}</p>
+        <div class="meta-grid">
+          <div class="meta"><strong>残り時間</strong><span data-countdown>${remainingSeconds(room.phaseEndsAt)}秒</span></div>
+          <div class="meta"><strong>役職</strong><span>${roleLabel(room.myParticipant.role)}</span></div>
+        </div>
+        ${room.knownAI ? `<p class="role-title">AIは「${escapeHtml(room.knownAI.displayName)}」</p>` : ""}
+        <h3>参加者</h3>
+        <div class="participant-list">${participantsHtml()}</div>
+        <div class="action-row">
+          <button class="ghost" data-action="leave">退出</button>
+        </div>
+      </aside>
       <section class="game-main">
-        <div class="stage-memo">
+        <div class="stage-panel">
           <h2>${turnHeadline(room)}</h2>
-          ${description ? `<p>${escapeHtml(description)}</p>` : ""}
+          <p class="muted">${turnDescription(room)}</p>
         </div>
         <section class="chat-panel">
-          <h2 class="sr-only">チャットログ</h2>
+          <h2>チャットログ</h2>
           <div class="chat-log" data-chat-log>${messagesHtml()}</div>
         </section>
         ${panelHtml}
       </section>
-      ${roomInfoDrawerHtml(room)}
     </div>
   `;
 }
@@ -504,20 +418,25 @@ function renderDuelGameShell(panelHtml) {
   const room = state.room;
   const description = turnDescription(room);
   app.innerHTML = `
-    <div class="duel-game-layout conversation-layout">
-      ${gameStatusBarHtml(room)}
+    <div class="duel-game-layout">
+      <div class="duel-game-top">
+        <div class="duel-round-status">
+          <p class="phase-chip">${phaseLabel(room)}</p>
+          ${duelTurnStatusHtml(room)}
+        </div>
+        <button class="danger duel-leave-button" data-action="leave">退出</button>
+      </div>
       <section class="game-main">
-        <div class="stage-memo duel-stage-panel">
+        <div class="stage-panel duel-stage-panel">
           <h2>${duelStageTitle(room)}</h2>
-          ${description ? `<p>${escapeHtml(description)}</p>` : ""}
+          ${description ? `<p class="muted">${description}</p>` : ""}
         </div>
         <section class="chat-panel">
-          <h2 class="sr-only">チャットログ</h2>
+          <h2>チャットログ</h2>
           <div class="chat-log" data-chat-log>${messagesHtml()}</div>
         </section>
         ${panelHtml}
       </section>
-      ${roomInfoDrawerHtml(room)}
     </div>
   `;
 }
@@ -528,7 +447,7 @@ function turnPanel() {
   if (!isMyTurn) {
     const currentTurnLabel = participantLabelById(room.currentTurn?.participantId, room.currentTurn?.displayName ?? "相手");
     return `
-      <section class="input-panel composer-panel is-waiting">
+      <section class="input-panel">
         <strong>待機中</strong>
         <p class="muted">現在は ${escapeHtml(currentTurnLabel)} のターンです。</p>
         ${isDuelRoom(room) ? `<div class="compact-row input-meta-row">${turnCountdownHtml(room)}</div>` : ""}
@@ -538,12 +457,10 @@ function turnPanel() {
 
   if (room.status === "ROUND_2" && room.currentTurn.turnType === "DIRECTED_QUESTION") {
     return `
-      <section class="input-panel composer-panel">
-        <label class="composer-target">宛先${targetSelectHtml()}</label>
-        <label class="composer-text sr-only" for="turnText">質問</label>
-        <textarea id="turnText" maxlength="${MESSAGE_LIMIT}" placeholder="${MESSAGE_LIMIT}文字以内で質問"></textarea>
+      <section class="input-panel">
+        <label>質問する相手${targetSelectHtml()}</label>
+        <label>質問<textarea id="turnText" maxlength="${MESSAGE_LIMIT}" placeholder="${MESSAGE_LIMIT}文字以内で質問"></textarea></label>
         <div class="compact-row input-meta-row"><span id="counter" class="counter">0 / ${MESSAGE_LIMIT}</span>${turnTimingHtml(room)}</div>
-        <button class="primary composer-send" data-action="submit-turn">送信予約</button>
       </section>
     `;
   }
@@ -553,13 +470,10 @@ function turnPanel() {
     const judgementField = isDuel ? duelJudgementFieldHtml() : "";
     const targetField = isDuel ? "" : `<label>AIだと思う人${targetSelectHtml()}</label>`;
     return `
-      <section class="input-panel judgement-panel">
-        <h2>${isDuel ? "正体を判定" : "最終推理"}</h2>
+      <section class="input-panel">
         ${judgementField}
         ${targetField}
-        <label class="composer-text">理由<textarea id="turnText" maxlength="${MESSAGE_LIMIT}" placeholder="${MESSAGE_LIMIT}文字以内で理由"></textarea></label>
         <div class="compact-row input-meta-row">${turnTimingHtml(room)}</div>
-        <button class="primary composer-send" data-action="submit-turn">決定を予約</button>
       </section>
     `;
   }
@@ -575,11 +489,9 @@ function turnPanel() {
       ? `${MESSAGE_LIMIT}文字以内で返信`
       : `${MESSAGE_LIMIT}文字以内で入力`;
   return `
-    <section class="input-panel composer-panel">
-      <label class="composer-text sr-only" for="turnText">${defaultLabel || "回答"}</label>
-      <textarea id="turnText" maxlength="${MESSAGE_LIMIT}" aria-label="${defaultLabel || "回答"}" placeholder="${defaultPlaceholder}"></textarea>
+    <section class="input-panel">
+      <label>${defaultLabel}<textarea id="turnText" maxlength="${MESSAGE_LIMIT}" aria-label="${defaultLabel || "回答"}" placeholder="${defaultPlaceholder}"></textarea></label>
       <div class="compact-row input-meta-row"><span id="counter" class="counter">0 / ${MESSAGE_LIMIT}</span>${turnTimingHtml(room)}</div>
-      <button class="primary composer-send" data-action="submit-turn">送信予約</button>
     </section>
   `;
 }
@@ -595,7 +507,7 @@ function votePanel() {
     })
     .join("");
   return `
-    <section class="input-panel final-judgement">
+    <section class="input-panel">
       <h2>誰がAIだと思う？</h2>
       <p class="muted">${voted ? "投票済みです。結果を待っています。" : "自分以外の参加者に投票できます。"}</p>
       ${isDuelRoom(room) ? `<div class="compact-row input-meta-row">${turnCountdownHtml(room)}</div>` : ""}
@@ -633,26 +545,17 @@ function renderResult() {
          ${room.votes.map((vote) => `<div class="participant"><span></span><span>${escapeHtml(voteLabel(vote))}</span><span class="badge">${vote.auto ? "自動" : "投票"}</span></div>`).join("")}
        </div>`;
   app.innerHTML = `
-    <section class="result-panel result-scene">
-      <div class="result-hero">
-        <p class="scene-kicker">RESULT</p>
-        <h2>${winner}</h2>
-        <div class="result-summary">${resultSummaryHtml}</div>
-      </div>
-      <div class="result-columns">
-        <section class="result-block">
-          <h3>参加者</h3>
-          <div class="participant-list">${participantsHtml()}</div>
-        </section>
-        <section class="result-block">
-          ${resultDetailsHtml}
-        </section>
-      </div>
-      <section class="chat-panel result-chat">
-        <h3>会話の記録</h3>
+    <section class="result-panel">
+      <p class="phase-chip">結果発表</p>
+      <h2>${winner}</h2>
+      ${resultSummaryHtml}
+      <div class="participant-list">${participantsHtml()}</div>
+      ${resultDetailsHtml}
+      <section class="chat-panel">
+        <h3>チャットログ</h3>
         <div class="chat-log" data-chat-log>${messagesHtml()}</div>
       </section>
-      <div class="action-row result-actions">
+      <div class="action-row">
         <button class="primary" data-action="play-again">もう一度遊ぶ</button>
         <button class="ghost" data-action="copy-result">結果を共有</button>
         <button class="ghost" data-action="leave">トップへ戻る</button>
@@ -1095,7 +998,7 @@ document.addEventListener("click", async (event) => {
     return;
   }
   const action = button.dataset.action;
-  const voteTarget = button.dataset.vote;
+    const voteTarget = button.dataset.vote;
   try {
     if (action === "start") {
       await api("/api/pretend", { method: "POST", body: { guestToken: state.token } });
@@ -1108,10 +1011,6 @@ document.addEventListener("click", async (event) => {
     } else if (action === "toggle-rules") {
       state.showRules = !state.showRules;
       render();
-    } else if (action === "toggle-room-info") {
-      document.querySelector(".room-info-drawer")?.classList.toggle("show");
-    } else if (action === "submit-turn") {
-      await submitCurrentTurn();
     } else if (action === "cancel-match") {
       await api("/api/match/cancel", { method: "POST", body: { guestToken: state.token } });
       await refresh();
@@ -1150,15 +1049,6 @@ function selectedTargetParticipantId() {
 
 function selectedDuelJudgement() {
   return document.querySelector('input[name="duelJudgement"]:checked')?.value ?? null;
-}
-
-async function submitCurrentTurn() {
-  const actionType = currentActionType();
-  if (!actionType) {
-    return;
-  }
-  await saveDraftAction(actionType, selectedTargetParticipantId(), false);
-  showToast("送信予約しました。時間になると公開されます。");
 }
 
 function scheduleDraftSave(delay = 180) {
