@@ -57,8 +57,8 @@ export const DuelRole = Object.freeze({
 const TURN_MS = 30_000;
 const VOTE_MS = 15_000;
 const DUEL_MATCH_MS = 30_000;
-const DUEL_AI_READY_MIN_MS = 2_500;
-const DUEL_AI_READY_MAX_MS = 8_000;
+const DUEL_AI_READY_MIN_MS = 1_000;
+const DUEL_AI_READY_MAX_MS = 20_000;
 const DUEL_CHAT_EXCHANGES = 3;
 const MESSAGE_LIMIT = 40;
 
