@@ -564,7 +564,7 @@ function votePanel() {
     .map((participant) => {
       const disabled = participant.id === room.myParticipant.id || voted ? "disabled" : "";
       const label = participantLabel(participant);
-      return `<button class="vote-button" ${disabled} data-vote="${participant.id}">${avatar(label)}${escapeHtml(label)}</button>`;
+      return `<button class="vote-button" ${disabled} data-vote="${participant.id}">${escapeHtml(label)}</button>`;
     })
     .join("");
   return `

@@ -1141,13 +1141,19 @@ body.home-view {
 }
 
 .vote-list {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }
 
 .vote-button {
   border: 1px solid var(--line);
   background: #fff;
+  color: var(--ink);
+  flex: 0 1 auto;
+  min-width: 0;
+  width: auto;
 }
 
 .vote-button:hover:not(:disabled) {
