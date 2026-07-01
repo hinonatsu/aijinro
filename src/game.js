@@ -583,12 +583,10 @@ function createRoomFromUsers(users, options = {}) {
     user.activeRoomId = room.id;
     user.queuedAt = null;
   }
-  addSystemMessage(
-    room,
-    isDuel
-      ? duelOpeningMessage(room)
-      : "3人が揃いました。AI参加者を追加して試合を開始します。"
-  );
+  const openingMessage = isDuel ? duelOpeningMessage(room) : "3人が揃いました。AI参加者を追加して試合を開始します。";
+  if (openingMessage) {
+    addSystemMessage(room, openingMessage);
+  }
   store.rooms.set(room.id, room);
   scheduleDuelAIReady(room);
   return room;
@@ -673,7 +671,7 @@ function duelOpeningMessage(room) {
     return "AIのふりをする人間と、それを見破る人間の1:1試合です。";
   }
   if (hasAI) {
-    return "相手がAIか人間かを見破る1:1試合です。";
+    return "";
   }
   return "相手がAIか人間かを互いに見破る1:1試合です。";
 }
