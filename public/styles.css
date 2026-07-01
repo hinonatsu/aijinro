@@ -17,6 +17,13 @@
   --danger: var(--brand-red);
   --danger-soft: var(--brand-red-soft);
   --shadow: 0 1px 2px rgba(17, 19, 24, 0.06);
+  --transition-bg: #f8fdff;
+  --loader-cyan-1: #083a46;
+  --loader-cyan-2: #007c96;
+  --loader-cyan-3: #00a6cf;
+  --loader-cyan-4: #00bff5;
+  --loader-cyan-5: #6ee6fb;
+  --loader-cyan-6: #c8f7ff;
   --shell-gutter: max(16px, calc((100vw - 1120px) / 2));
   --game-sidebar: 300px;
   --game-gap: 16px;
@@ -49,7 +56,7 @@ body::after {
   left: 0;
   width: 100%;
   height: 50vh;
-  background: #1c2020;
+  background: var(--transition-bg);
   pointer-events: none;
   transition: transform 200ms ease-out;
   z-index: 400;
@@ -1209,31 +1216,31 @@ body.home-view {
 }
 
 .loader .bar1 {
-  background-color: #754fa0;
+  background-color: var(--loader-cyan-1);
 }
 
 .loader .bar2 {
-  background-color: #09b7bf;
+  background-color: var(--loader-cyan-2);
   animation-delay: -700ms;
 }
 
 .loader .bar3 {
-  background-color: #90d36b;
+  background-color: var(--loader-cyan-3);
   animation-delay: -600ms;
 }
 
 .loader .bar4 {
-  background-color: #f2d40d;
+  background-color: var(--loader-cyan-4);
   animation-delay: -500ms;
 }
 
 .loader .bar5 {
-  background-color: #fcb12b;
+  background-color: var(--loader-cyan-5);
   animation-delay: -400ms;
 }
 
 .loader .bar6 {
-  background-color: #ed1b72;
+  background-color: var(--loader-cyan-6);
   animation-delay: -300ms;
 }
 
