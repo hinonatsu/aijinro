@@ -60,7 +60,7 @@ test("OpenAI APIが失敗したらモックAIに戻す", async () => {
   });
 
   assert.ok(output.text);
-  assert.ok(Array.from(output.text).length <= 30);
+  assert.ok(Array.from(output.text).length <= 40);
 });
 
 test("最終推理ではOpenAIの疑い先と理由を返す", async () => {
@@ -116,12 +116,20 @@ test("1:1判定チャットでは人間らしさ指示を送り、疑い先をnu
   assert.match(body.instructions, /整いすぎている印象を避ける/);
   assert.equal(input.selfDisplayName, "ねこ");
   assert.deepEqual(input.ownRecentMessages, ["パンだけ、かなり適当"]);
-  assert.deepEqual(input.replyTo, { displayName: "みかん", text: "昼はおにぎり" });
+  assert.deepEqual(input.replyTo, {
+    displayName: "みかん",
+    text: "昼はおにぎり",
+    speaker: "みかん",
+    kind: "casual",
+    hints: ["昼", "おにぎり"]
+  });
+  assert.equal(input.replyToKind, "casual");
   assert.deepEqual(input.replyToHints, ["昼", "おにぎり"]);
+  assert.deepEqual(input.unansweredQuestions, []);
   assert.equal(output.targetParticipantId, null);
-  assert.equal(output.text, "昼はパンだけ、かなり適当だった");
-  assert.ok(Array.from(output.text).length >= 14);
-  assert.ok(Array.from(output.text).length <= 30);
+  assert.equal(output.text, "昼はパンだけ、かなり適当だったかもね");
+  assert.ok(Array.from(output.text).length >= 18);
+  assert.ok(Array.from(output.text).length <= 40);
 });
 
 test("モックAIも直前の相手発言に寄せて返す", async () => {
@@ -134,10 +142,25 @@ test("モックAIも直前の相手発言に寄せて返す", async () => {
     replyTo: { displayName: "みかん", text: "眠くて昼もぼんやりしてた" }
   });
 
-  assert.equal(output.text, "昼はパンだけ、かなり適当だった");
+  assert.equal(output.text, "昼はパンだけ、かなり適当だったかもね");
   assert.equal(output.targetParticipantId, undefined);
-  assert.ok(Array.from(output.text).length >= 14);
-  assert.ok(Array.from(output.text).length <= 30);
+  assert.ok(Array.from(output.text).length >= 18);
+  assert.ok(Array.from(output.text).length <= 40);
+});
+
+test("意味不明な直前発言には無理に解釈せず軽く反応する", async () => {
+  process.env.OPENAI_API_KEY = "";
+
+  const output = await generateAIMessage({
+    ...baseInput(),
+    actionType: "FREE_CHAT",
+    mode: "DUEL",
+    replyTo: { displayName: "みかん", text: "あすいあｈｌ" }
+  });
+
+  assert.equal(output.text, "え、今の打ち間違い？ちょっと笑ったんだけど");
+  assert.ok(Array.from(output.text).length >= 18);
+  assert.ok(Array.from(output.text).length <= 40);
 });
 
 function baseInput() {

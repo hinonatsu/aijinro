@@ -431,7 +431,7 @@ test("入力ターンは30秒で自動確定される", () => {
   assert.ok(turnDuration <= 30_100);
 });
 
-test("発言下書きは30文字を超えられない", async () => {
+test("発言下書きは40文字を超えられない", async () => {
   const users = [createGuestSession(), createGuestSession(), createGuestSession()];
   joinQueue(users[0].guestToken);
   joinQueue(users[1].guestToken);
@@ -447,9 +447,9 @@ test("発言下書きは30文字を超えられない", async () => {
   await assert.rejects(
     submitAction(users[0].guestToken, room.id, {
       actionType: "ROUND_1_ANSWER",
-      text: "これは三十文字をかなり大きく超えてしまうとても長い発言のテストです"
+      text: "これは四十文字を確実にかなり大きく超えてしまう、とても長い発言のテストです。さらに続きます"
     }),
-    /30文字以内/
+    /40文字以内/
   );
 });
 

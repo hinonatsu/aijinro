@@ -58,7 +58,45 @@ const TURN_MS = 30_000;
 const VOTE_MS = 15_000;
 const DUEL_MATCH_MS = 30_000;
 const DUEL_CHAT_EXCHANGES = 3;
-const MESSAGE_LIMIT = 30;
+const MESSAGE_LIMIT = 40;
+
+const AI_CONTEXT_HINTS = [
+  "今日",
+  "昼",
+  "朝",
+  "夜",
+  "ごはん",
+  "ご飯",
+  "おにぎり",
+  "パン",
+  "コンビニ",
+  "眠",
+  "だる",
+  "疲",
+  "動画",
+  "番組",
+  "スマホ",
+  "充電",
+  "雨",
+  "暑",
+  "寒",
+  "買",
+  "食べ",
+  "寝",
+  "忘",
+  "ミス",
+  "失敗",
+  "好き",
+  "何",
+  "誰",
+  "どこ",
+  "いつ",
+  "なんで",
+  "どう",
+  "打ち間違",
+  "怪しい",
+  "人間"
+];
 
 const DISPLAY_NAMES = [
   "みかん",
@@ -755,22 +793,16 @@ async function performAITurn(roomId) {
     .filter((message) => message.participantId === aiParticipant.id)
     .slice(-3)
     .map((message) => message.text);
-  const lastOtherMessage = [...chatMessages].reverse().find((message) => message.participantId !== aiParticipant.id);
-  const replyTo = room.currentQuestion?.text
-    ? {
-        displayName: participantById(room, room.currentQuestion.askerId)?.displayName ?? "system",
-        text: room.currentQuestion.text
-      }
-    : lastOtherMessage
-      ? {
-          displayName: participantById(room, lastOtherMessage.participantId)?.displayName ?? "system",
-          text: lastOtherMessage.text
-        }
-      : null;
+  const replyTo = createAIReplyTarget(room, aiParticipant, chatMessages);
+  const replyToHints = replyTo?.hints ?? [];
+  const replyToKind = replyTo?.kind ?? "casual";
+  const unansweredQuestions = unansweredQuestionsForAI(chatMessages, aiParticipant);
 
   const input = {
     roomId,
     mode: room.mode,
+    roomMode: room.mode === RoomMode.DUEL ? "two_player_ai_check" : "normal",
+    phase: phaseForAI(room),
     aiParticipantId: aiParticipant.id,
     selfDisplayName: aiParticipant.displayName,
     round: room.round,
@@ -783,6 +815,10 @@ async function performAITurn(roomId) {
     allowMinorSlip: Math.random() < 0.1,
     ownRecentMessages,
     replyTo,
+    replyToKind,
+    replyToHints,
+    unansweredQuestions,
+    gameContext: gameContextForAI(room, aiParticipant, replyTo),
     conversation
   };
 
@@ -817,6 +853,129 @@ async function performAITurn(roomId) {
     text: output.text,
     targetParticipantId: room.currentQuestion?.askerId ?? null
   });
+}
+
+function createAIReplyTarget(room, aiParticipant, chatMessages) {
+  if (room.currentQuestion?.text) {
+    const asker = participantById(room, room.currentQuestion.askerId);
+    return createAIReplyObject({
+      participant: asker,
+      text: room.currentQuestion.text,
+      source: "current_question"
+    });
+  }
+
+  const lastOtherMessage = [...chatMessages].reverse().find((message) => message.participantId !== aiParticipant.id);
+  if (!lastOtherMessage) {
+    return null;
+  }
+  return createAIReplyObject({
+    participant: participantById(room, lastOtherMessage.participantId),
+    text: lastOtherMessage.text,
+    source: "last_message",
+    messageId: lastOtherMessage.id
+  });
+}
+
+function createAIReplyObject({ participant, text, source, messageId = null }) {
+  const kind = classifyAIReplyKind(text);
+  const hints = aiReplyHints(text, kind);
+  return {
+    participantId: participant?.id ?? null,
+    speaker: participant?.displayName ?? "system",
+    displayName: participant?.displayName ?? "system",
+    text,
+    kind,
+    hints,
+    source,
+    messageId
+  };
+}
+
+function unansweredQuestionsForAI(chatMessages, aiParticipant) {
+  const lastOwnIndex = chatMessages.reduce((latest, message, index) => {
+    return message.participantId === aiParticipant.id ? index : latest;
+  }, -1);
+  return chatMessages
+    .slice(lastOwnIndex + 1)
+    .filter((message) => message.participantId !== aiParticipant.id)
+    .filter((message) => classifyAIReplyKind(message.text) === "question")
+    .slice(-3)
+    .map((message) => message.text);
+}
+
+function phaseForAI(room) {
+  if (room.status === RoomStatus.ROUND_1) {
+    return "round1";
+  }
+  if (room.status === RoomStatus.ROUND_2) {
+    return "discussion";
+  }
+  if (room.status === RoomStatus.ROUND_3) {
+    return "judgement";
+  }
+  return room.status.toLowerCase();
+}
+
+function gameContextForAI(room, aiParticipant, replyTo) {
+  const isUnderSuspicion = replyTo?.kind === "accusation";
+  return {
+    isUnderSuspicion,
+    suspicionReason: isUnderSuspicion ? replyTo.text : null,
+    currentTopic: inferAITopic(room, replyTo),
+    remainingHumanCount: humanParticipants(room).length,
+    ownTurnCount: room.messages.filter((message) => message.kind === "CHAT" && message.participantId === aiParticipant.id)
+      .length
+  };
+}
+
+function inferAITopic(room, replyTo) {
+  if (replyTo?.kind === "typo") {
+    return "打ち間違い";
+  }
+  return replyTo?.hints?.[0] ?? room.currentQuestion?.text ?? room.topicPrompt ?? null;
+}
+
+function classifyAIReplyKind(text) {
+  const normalized = String(text ?? "").trim();
+  if (!normalized) {
+    return "casual";
+  }
+  if (/AI|bot|人工知能|怪しい|人間じゃ|機械|バレ|疑/.test(normalized)) {
+    return "accusation";
+  }
+  if (looksLikeAIReplyTypo(normalized)) {
+    return "typo";
+  }
+  if (/[?？]$|何|なに|誰|だれ|どこ|いつ|なんで|どう|食べた|好き|思う/.test(normalized)) {
+    return "question";
+  }
+  return "casual";
+}
+
+function looksLikeAIReplyTypo(text) {
+  const compact = normalizeAIContextText(text);
+  if (!compact) {
+    return true;
+  }
+  if (/あすいあ|asdf|qwer|ｈｌ|hl/i.test(compact)) {
+    return true;
+  }
+  const hasKana = /[ぁ-んァ-ン]/.test(compact);
+  const hasLatin = /[a-zA-Zａ-ｚＡ-Ｚ]/.test(compact);
+  return hasKana && hasLatin;
+}
+
+function aiReplyHints(text, kind = classifyAIReplyKind(text)) {
+  if (kind === "typo") {
+    return ["打ち間違"];
+  }
+  const normalized = normalizeAIContextText(text);
+  return AI_CONTEXT_HINTS.filter((hint) => normalized.includes(hint)).slice(0, 4);
+}
+
+function normalizeAIContextText(text) {
+  return stripControlChars(text ?? "").replace(/[。、！？!?「」\s]/g, "");
 }
 
 function createEmptyDraft(room, participantId, turnType) {
