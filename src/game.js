@@ -1166,7 +1166,7 @@ async function finalizeCurrentTurn(room) {
         judgement === DuelJudgement.AI ? "AI" : judgement === DuelJudgement.HUMAN ? "人間" : "未選択";
       const finalDraft = {
         ...draft,
-        text: `判定：相手は${judgementLabel}\n理由：${reason}`
+        text: `判定：相手は${judgementLabel}`
       };
       await publishDraft(room, participant, finalDraft, {
         round: 3,
@@ -1183,7 +1183,7 @@ async function finalizeCurrentTurn(room) {
     const targetLabel = room.mode === RoomMode.DUEL ? "相手" : target.displayName;
     const finalDraft = {
       ...draft,
-      text: `AIだと思う人：${targetLabel}\n理由：${reason}`
+      text: `AIだと思う人：${targetLabel}`
     };
     await publishDraft(room, participant, finalDraft, {
       round: 3,

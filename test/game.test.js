@@ -464,6 +464,36 @@ test("発言下書きは30文字を超えられない", async () => {
   );
 });
 
+test("最終推理は理由なしで投票先だけを保存して投票へ進む", async () => {
+  const users = [createGuestSession(), createGuestSession(), createGuestSession()];
+  joinQueue(users[0].guestToken);
+  joinQueue(users[1].guestToken);
+  const match = joinQueue(users[2].guestToken);
+  const room = testOnly.store.rooms.get(match.roomId);
+  const human = room.participants.find((participant) => participant.userId === users[0].userId);
+  const ai = room.participants.find((participant) => participant.isAI);
+  room.status = RoomStatus.ROUND_3;
+  room.round = 3;
+  room.round3Order = [human.id];
+  room.round3Index = 0;
+  testOnly.setTurn(room, human.id, "FINAL_SUSPICION");
+
+  await submitAction(users[0].guestToken, room.id, {
+    actionType: "FINAL_SUSPICION",
+    targetParticipantId: ai.id
+  });
+
+  await testOnly.finalizeCurrentTurn(room);
+
+  const finalMessage = room.messages.find((message) => {
+    return message.kind === "CHAT" && message.participantId === human.id;
+  });
+  assert.equal(room.status, RoomStatus.VOTING);
+  assert.equal(human.finalSuspectId, ai.id);
+  assert.equal(finalMessage.text, `AIだと思う人：${ai.displayName}`);
+  assert.equal(finalMessage.text.includes("理由"), false);
+});
+
 test("AIに2票入ると人間陣営が勝つ", () => {
   const users = [createGuestSession(), createGuestSession(), createGuestSession()];
   joinQueue(users[0].guestToken);

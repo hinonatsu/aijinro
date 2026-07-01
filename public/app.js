@@ -469,13 +469,11 @@ function turnPanel() {
     const isDuel = isDuelRoom(room);
     const judgementField = isDuel ? duelJudgementFieldHtml() : "";
     const targetField = isDuel ? "" : `<label>AIだと思う人${targetSelectHtml()}</label>`;
-    const reasonLabel = isDuel ? "判定の理由" : "理由";
     return `
       <section class="input-panel">
         ${judgementField}
         ${targetField}
-        <label>${reasonLabel}<textarea id="turnText" maxlength="${MESSAGE_LIMIT}" placeholder="${MESSAGE_LIMIT}文字以内で理由を書く"></textarea></label>
-        <div class="compact-row input-meta-row"><span id="counter" class="counter">0 / ${MESSAGE_LIMIT}</span>${turnTimingHtml(room)}</div>
+        <div class="compact-row input-meta-row">${turnTimingHtml(room)}</div>
       </section>
     `;
   }
@@ -883,9 +881,9 @@ function turnDescription(room) {
   }
   if (room.status === "ROUND_3") {
     if (isDuelRoom(room)) {
-      return `相手がAIか人間かを選び、理由を${MESSAGE_LIMIT}文字以内で書きます。入力済みでも${TURN_SECONDS}秒ちょうどで送信されます。`;
+      return `相手がAIか人間かを選びます。入力済みでも${TURN_SECONDS}秒ちょうどで送信されます。`;
     }
-    return `AIだと思う相手と理由を${MESSAGE_LIMIT}文字以内で出します。入力済みでも${TURN_SECONDS}秒ちょうどで送信されます。`;
+    return `AIだと思う相手を選びます。入力済みでも${TURN_SECONDS}秒ちょうどで送信されます。`;
   }
   return "";
 }
