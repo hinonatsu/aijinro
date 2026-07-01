@@ -295,7 +295,7 @@ function renderDuelQueue() {
   const queueTitle = isPretender ? "開始まで待機中" : "相手を探しています";
   const queueDescription = isPretender
     ? "判定役が見つかりました。開始時刻まで待機しています。"
-    : "成立の有無にかかわらず、30秒後に試合が始まります。";
+    : "30秒後に試合が始まります。";
   const sideTitle = isPretender ? "AIのふりをする" : "AIを見破る";
   const sideDescription = isPretender
     ? "あなたは人間です。会話で相手にAIだと思わせたら勝ちです。"
