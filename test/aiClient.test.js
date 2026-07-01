@@ -117,6 +117,9 @@ test("1:1判定チャットでは人間らしさ指示を送り、疑い先をnu
   assert.match(body.instructions, /replyToがあれば必ずその発言への返答/);
   assert.match(body.instructions, /整いすぎている印象を避ける/);
   assert.match(body.instructions, /ぶっきらぼうに見えない/);
+  assert.match(body.instructions, /7〜24文字/);
+  assert.match(body.instructions, /語尾を「ね」「かもね」「だよね」に揃えない/);
+  assert.match(body.instructions, /answerHints/);
   assert.equal(input.selfDisplayName, "ねこ");
   assert.deepEqual(input.ownRecentMessages, ["パンだけ、かなり適当"]);
   assert.deepEqual(input.replyTo, {
@@ -128,10 +131,12 @@ test("1:1判定チャットでは人間らしさ指示を送り、疑い先をnu
   });
   assert.equal(input.replyToKind, "casual");
   assert.deepEqual(input.replyToHints, ["昼", "おにぎり"]);
+  assert.ok(input.answerHints.includes("コンビニでパンを買った"));
+  assert.ok(input.answerHints.includes("パンだけだった"));
   assert.deepEqual(input.unansweredQuestions, []);
   assert.equal(output.targetParticipantId, null);
-  assert.equal(output.text, "昼はパンだけ、かなり適当だったかもね");
-  assert.ok(Array.from(output.text).length >= 14);
+  assert.equal(output.text, "パンだけだった");
+  assert.ok(Array.from(output.text).length >= 7);
   assert.ok(Array.from(output.text).length <= 30);
 });
 
@@ -145,9 +150,9 @@ test("モックAIも直前の相手発言に寄せて返す", async () => {
     replyTo: { displayName: "みかん", text: "眠くて昼もぼんやりしてた" }
   });
 
-  assert.equal(output.text, "昼はパンだけ、かなり適当だったかもね");
+  assert.equal(output.text, "パンだけだった");
   assert.equal(output.targetParticipantId, undefined);
-  assert.ok(Array.from(output.text).length >= 14);
+  assert.ok(Array.from(output.text).length >= 7);
   assert.ok(Array.from(output.text).length <= 30);
 });
 
@@ -180,12 +185,11 @@ test("AIだと疑われた時の返しは固定文にしない", async () => {
   Math.random = () => 0.99;
   const second = await generateAIMessage(input);
 
-  assert.equal(first.text, "まあ怪しく見えたなら分かる");
-  assert.equal(second.text, "いや普通に人だけど？");
+  assert.equal(first.text, "え、なんで");
+  assert.equal(second.text, "ちょっと早くない？");
   assert.notEqual(first.text, second.text);
   assert.ok(Array.from(first.text).length <= 30);
   assert.ok(Array.from(second.text).length <= 30);
-  assert.match(second.text, /人/);
   assert.doesNotMatch(first.text, /AI/);
   assert.doesNotMatch(second.text, /AI/);
 });

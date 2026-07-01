@@ -4,7 +4,7 @@ import { moderateMessage } from "./moderation.js";
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const DEFAULT_OPENAI_MODEL = "gpt-5.4-mini";
 const MESSAGE_LIMIT = 30;
-const ROUND_ONE_MIN_CHARS = 14;
+const ROUND_ONE_MIN_CHARS = 7;
 
 const AI_STYLE_PATTERNS = [
   /AI|bot|システム|プログラム|モデル/i,
@@ -53,64 +53,74 @@ const CONTEXT_HINTS = [
 ];
 
 const commonAnswerHints = [
-  "朝ちょっと眠くてぼんやりしてた",
-  "昼はパンだけ、かなり適当",
-  "スマホの充電なくて少し焦った",
-  "予定ちょっと勘違いしてた",
-  "動画見すぎて寝るの遅かった"
-];
-
-const questionTemplates = [
-  "{name}は今日なんか慌てた？",
-  "{name}のそれ、もう少し聞きたい",
-  "{name}は昼なに食べた？",
-  "{name}は誰が自然に見えた？"
-];
-
-const answerTemplates = [
-  "そこ聞くんだ、昼前に少し焦った",
-  "はっきり覚えてないけど急いでた",
-  "普通に答えただけだよ、たぶん",
-  "買ったものは適当。細かくない"
-];
-
-const freeChatTemplates = [
-  "それ少しわかる。自分も似てた",
-  "その話なら私はかなり地味かも",
-  "自分は少し違って、朝が重かった",
-  "今日はかなり普通寄りだったかも"
+  "パンだけだった",
+  "コンビニだった",
+  "なんか眠かった",
+  "適当に済ませた",
+  "ほぼ覚えてない",
+  "朝からぼんやり",
+  "動画見すぎたかも"
 ];
 
 const suspicionReasons = [
-  "答えが少し整いすぎて見えた",
-  "具体的な話が後から足された感じがした",
-  "質問への返しが少し薄かった",
-  "無難だけど生活感が少し弱かった"
+  "なんか違う気がした",
+  "返し方がちょっと変だった",
+  "答え方が変だった",
+  "なんとなく怪しかった",
+  "話の感じが違った",
+  "理由はわからないけど怪しい"
 ];
 
 const fallbackTexts = {
-  ROUND_1_ANSWER: [
-    "あんま覚えてないけど普通だったかもね",
-    "昼はパンだけ、かなり適当だったかもね",
-    "今日はちょっと眠くて雑だったんだよね",
-    "まあ地味な一日だったとは思うけどね"
-  ],
+  ROUND_1_ANSWER: {
+    short: ["パンだけだった", "コンビニだった", "なんか眠かった", "適当に済ませた", "ほぼ覚えてない"],
+    medium: [
+      "パンだけ、かなり適当だった",
+      "昼前に眠くて、適当に済ませた",
+      "あんまり覚えてない、たぶんパン",
+      "コンビニ寄っただけで終わった",
+      "今日はそういう日だったかも"
+    ],
+    long: ["昼前に眠くて、ちゃんと食べてない", "昼はパンだけだったかな、眠くて"]
+  },
   FREE_CHAT: [
-    "それ少しわかる、私も今日は近いかもね",
-    "まあ今日は地味だったとは思うかな",
-    "なんか似た感じかも、少しだけあるんだよね",
-    "そこはちょっと覚えてないかもしれない"
+    "それちょっとわかるかも",
+    "自分も似たような感じだった",
+    "今日はかなり地味だったし",
+    "わかる、なんか今日重かった",
+    "そっか、私はちょっと違ったかな",
+    "あ、それ近いかも"
   ],
-  DIRECTED_QUESTION: ["今日なんか慌てたことあった？", "それもう少し聞いていい？", "昼なに食べたか覚えてる？"],
-  DIRECTED_ANSWER: ["あんま覚えてないけど普通", "そこはちょっと曖昧かも", "たぶんそんな感じだった"],
-  FINAL_SUSPICION: ["返事が少しきれいすぎた", "生活感が薄い気がした", "少し無難に見えた"],
+  DIRECTED_QUESTION: [
+    "{name}は昼なに食べた？",
+    "{name}のそれ、もう少し聞きたい",
+    "{name}は今日なんか慌てた？",
+    "ちなみに{name}は朝どうだった？",
+    "{name}は誰が怪しいと思った？"
+  ],
+  DIRECTED_ANSWER: [
+    "あんま覚えてない",
+    "急いでたからかな",
+    "普通に答えただけだよ",
+    "そこはちょっと曖昧",
+    "そんな感じだった"
+  ],
+  FINAL_SUSPICION: [
+    "なんか違う気がした",
+    "返し方がちょっと変だった",
+    "答え方が変だった",
+    "なんとなく怪しかった",
+    "話の感じが違った",
+    "理由はわからないけど怪しい"
+  ],
   ACCUSATION: [
-    "まあ怪しく見えたなら分かる",
-    "え、そこ疑う？ちょっと早くない",
-    "そう見えたならごめんだけど",
-    "それだけで決められると困るな",
-    "んー、普通に返しただけだけど",
-    "いや普通に人だけど？"
+    "え、なんで",
+    "そこ疑う？",
+    "普通に人だけど",
+    "まあ分かるけど違うよ",
+    "そう見えたならしょうがない",
+    "それで判断するんだ",
+    "ちょっと早くない？"
   ]
 };
 
@@ -192,10 +202,12 @@ async function generateMockAIMessage(input) {
   const participants = input.participants.filter((participant) => {
     return participant.id !== input.aiParticipantId;
   });
+  const conversation = input.conversation ?? [];
+  const persona = input.persona ?? {};
 
   if (input.actionType === "DIRECTED_QUESTION") {
     const target = sample(participants);
-    const template = sample(questionTemplates);
+    const template = contextualSample(fallbackTexts.DIRECTED_QUESTION, conversation);
     return {
       text: await safeAIText(template.replace("{name}", target.displayName), input),
       targetParticipantId: target.id
@@ -203,23 +215,23 @@ async function generateMockAIMessage(input) {
   }
 
   if (input.actionType === "DIRECTED_ANSWER") {
-    return { text: await safeAIText(sample(answerTemplates), input) };
+    return { text: await safeAIText(contextualSample(fallbackTexts.DIRECTED_ANSWER, conversation), input) };
   }
 
   if (input.actionType === "FREE_CHAT") {
-    return { text: await safeAIText(createMockRound1Text(input, freeChatTemplates), input) };
+    return { text: await safeAIText(createMockRound1Text(input, fallbackTexts.FREE_CHAT), input) };
   }
 
   if (input.actionType === "FINAL_SUSPICION") {
     const target = sample(participants);
-    const reason = await safeAIText(sample(suspicionReasons), input);
+    const reason = await safeAIText(contextualSample(suspicionReasons, conversation), input);
     return {
       text: `AIだと思う人：${target.displayName}\n理由：${reason}`,
       targetParticipantId: target.id
     };
   }
 
-  return { text: await safeAIText(createMockRound1Text(input, commonAnswerHints), input) };
+  return { text: await safeAIText(createMockRound1Text({ ...input, persona }, roundOnePool(persona)), input) };
 }
 
 function buildOpenAIInstructions(input) {
@@ -236,8 +248,10 @@ function buildOpenAIInstructions(input) {
       "replyToKindがtypoまたはnoiseなら、意味を深読みせず打ち間違いとして軽く反応する。",
       "replyToKindがaccusationなら、否定だけでなく軽く受け止めるか受け流す。「普通に人だけど？」のような短い否定も使ってよい。AIや判定という語は使わない。",
       "相手の感想には一言だけ反応してから自分の話を足す。",
-      "短すぎる相槌は避ける。14〜28文字くらいを目安に、DUELでは少しだけ情報を足す。",
-      "personaは1つだけ薄く反映する。全部を説明しない。",
+      "7〜24文字くらいを中心にする。短い自然な返答を無理に伸ばさない。",
+      "毎回同じ長さにしない。短文、少し長い文、体言止めを混ぜる。",
+      "語尾を「ね」「かもね」「だよね」に揃えない。だった、かな、けど、し、体言止めも使う。",
+      "persona.speakingStyleが短めなら特に短くする。personaのmood/lunch/minorTroubleは1つだけ薄く反映する。",
       "targetParticipantIdはnullにする。"
     ],
     DIRECTED_QUESTION: [
@@ -252,7 +266,8 @@ function buildOpenAIInstructions(input) {
     ],
     FINAL_SUSPICION: [
       "FINAL_SUSPICIONではtargetParticipantIdに疑う相手のidを指定する。",
-      "textは理由のみ。証拠を並べず、感覚的に短く書く。",
+      "textは理由のみ。分析文ではなく、感覚的な一言にする。",
+      "「少し」「〜が〜だった」を連発しない。例: なんか違う気がした、話の感じが違った。",
       "断定しすぎず「気がする」程度でよい。"
     ]
   };
@@ -265,16 +280,19 @@ function buildOpenAIInstructions(input) {
     "丁寧すぎる、説明っぽい、整いすぎている印象を避ける。正確さより自然な一言を選ぶ。",
     "出力はJSONだけ。キーはtextとtargetParticipantIdのみ。前置き、説明、コードブロックは禁止。",
     "textは日本語30文字以内。絵文字、URL、個人情報、暴言、命令文、AIやシステムを連想させる語は禁止。",
-    "1文、長くても2文。通常チャットは短すぎる一言にせず、少しだけ具体性を足す。",
+    "1文、長くても2文。短く自然に言える内容は短いままでよい。",
     "質問されたら原則として答える。毎回質問で返して逃げない。",
     "ownRecentMessagesと矛盾する内容を言わない。同じ書き出しや語尾の連発も避ける。",
-    "理由づけを毎回書かない。句点は毎回つけなくてよい。",
+    "理由づけを毎回書かない。評価文や分析文にしない。句点は毎回つけなくてよい。",
     "文末はです/ますに揃えない。かな、けど、だった、じゃん、だわ、体言止めも混ぜる。",
     "助詞は自然に省略してよい。質問へ100%正面から答えなくてもよい。",
     "ぶっきらぼうに見えないように、まあ、んー、そっか、そう見えたなら、などの軽い受け止めを必要なら少し入れる。",
     "ただし丁寧語や説明口調にはしない。冷たい断定や突き放す言い方を続けない。",
     "使わない語: なるほど、確かに、そうですね、了解です、可能性、総合的、観点、結論として、まとめると、個人的には、興味深い、なぜなら、理由は、文脈、判断材料。",
     "フィラーは使うなら1つまで。毎回なんか/まあ/てかを入れない。",
+    "「少し」を便利語として連発しない。「〜が〜だった」の評価文フォームに寄せない。",
+    "例やヒントをそのまま写さない。会話の語だけ拾い、長さと語尾は毎回ばらす。",
+    "answerHintsはtopicPromptや会話に合う短い素材。丸写しせず、1つだけ薄く使う。",
     minorSlipRule,
     "personaはキャラの一貫性として扱うが、1ターンに盛り込む情報は1つまで。",
     "actionTypeがFREE_CHATまたはCOMMON_ANSWERの場合もROUND_1_ANSWERとして扱う。",
@@ -315,6 +333,7 @@ function buildOpenAIInput(input, participants) {
       : null,
     replyToKind,
     replyToHints,
+    answerHints: contextualAnswerHints(input),
     unansweredQuestions: (input.unansweredQuestions ?? []).slice(-3),
     gameContext: input.gameContext ?? null,
     conversation
@@ -435,9 +454,7 @@ function fallbackForAction(input) {
   if (roundOneActionType(input.actionType) && input.replyTo?.text) {
     return contextualFallback(input);
   }
-  const actionType = input.actionType === "COMMON_ANSWER" ? "ROUND_1_ANSWER" : input.actionType || "ROUND_1_ANSWER";
-  const candidates = fallbackTexts[actionType] ?? fallbackTexts.ROUND_1_ANSWER;
-  return sample(candidates);
+  return contextualSample(fallbackCandidates(input), input.conversation ?? []);
 }
 
 function createMockRound1Text(input, templates) {
@@ -446,15 +463,15 @@ function createMockRound1Text(input, templates) {
     return contextualFallback(input);
   }
   if (input.actionType === "FREE_CHAT" && (input.conversation ?? []).length) {
-    return sample(templates);
+    return contextualSample(templates, input.conversation);
   }
   if (persona.lunch && /食べ|昼|ごはん|飯/.test(input.topicPrompt ?? "")) {
     return persona.lunch.replace("コンビニで", "").replace("を買った", "だけ");
   }
   if (persona.minorTrouble && Math.random() > 0.5) {
-    return `${persona.minorTrouble}、少し焦った`;
+    return `${persona.minorTrouble}、焦った`;
   }
-  return sample(templates);
+  return contextualSample(templates, input.conversation ?? []);
 }
 
 function roundOneActionType(actionType) {
@@ -467,7 +484,7 @@ function isContextualEnough(text, input) {
   }
   const output = normalizeForContext(text);
   const kind = replyKind(input);
-  if (kind === "typo" || kind === "noise") {
+  if (kind === "accusation" || kind === "typo" || kind === "noise") {
     return true;
   }
   const hints = replyHints(input);
@@ -497,6 +514,23 @@ function uniqueHints(hints) {
   return [...new Set(hints.filter(Boolean).map((hint) => normalizeForContext(hint)).filter(Boolean))];
 }
 
+function contextualAnswerHints(input) {
+  const persona = input.persona ?? {};
+  const personaHints = [persona.lunch, persona.minorTrouble, persona.mood, persona.hobby].filter(Boolean);
+  const hints = [...personaHints, ...commonAnswerHints];
+  const recentText = [
+    input.topicPrompt,
+    input.questionText,
+    input.replyTo?.text,
+    ...(input.ownRecentMessages ?? []),
+    ...(input.conversation ?? []).map((message) => message.text)
+  ].join("");
+  const matched = hints.filter((hint) => {
+    return CONTEXT_HINTS.some((contextHint) => recentText.includes(contextHint) && hint.includes(contextHint));
+  });
+  return [...new Set([...matched, ...hints])].slice(0, 5);
+}
+
 function normalizeForContext(text) {
   return String(text ?? "").replace(/[。、！？!?「」\s]/g, "");
 }
@@ -506,33 +540,101 @@ function contextualFallback(input) {
   const persona = input.persona ?? {};
   const kind = replyKind(input);
   if (kind === "accusation") {
-    return sample(fallbackTexts.ACCUSATION);
+    return pickAccusationByPersona(persona);
   }
   if (kind === "typo" || kind === "noise") {
     return "え、今の打ち間違い？ちょっと笑ったんだけど";
   }
   if (/昼|食べ|ごはん|飯|おにぎり|パン|コンビニ/.test(replyText)) {
     return persona.lunch?.includes("パン")
-      ? "昼はパンだけ、かなり適当だったかもね"
+      ? "パンだけだった"
       : "昼は適当、そっちはちゃんとしてそう";
   }
   if (/眠|寝|だる|疲/.test(replyText)) {
-    return "眠いのわかる、こっちも今日はぼんやり";
+    return "眠いのわかる、今日はぼんやり";
   }
   if (/動画|番組|見/.test(replyText)) {
-    return "動画は短いやつだけ少し見たくらいかな";
+    return "動画は短いやつだけ見たかな";
   }
   if (/買|店/.test(replyText)) {
     return "コンビニ寄ったくらいかな、今日はそれだけ";
   }
   if (/失敗|ミス|忘/.test(replyText)) {
-    return "それある、私も少しミスったし地味に焦った";
+    return "それある、私もミスって焦った";
   }
   if (/雨|天気|暑|寒/.test(replyText)) {
     return "それ地味にきついよね、今日は特にだるい";
   }
   const fragment = compactReplyFragment(replyText);
-  return fragment ? limitText(`${fragment}か、私は普通だったと思うけど`) : sample(fallbackTexts.FREE_CHAT);
+  return fragment ? limitText(`${fragment}か、私は普通だったかな`) : contextualSample(fallbackTexts.FREE_CHAT, input.conversation ?? []);
+}
+
+function fallbackCandidates(input) {
+  const actionType = input.actionType === "COMMON_ANSWER" ? "ROUND_1_ANSWER" : input.actionType || "ROUND_1_ANSWER";
+  if (actionType === "ROUND_1_ANSWER") {
+    return roundOnePool(input.persona);
+  }
+  return fallbackTexts[actionType] ?? roundOnePool(input.persona);
+}
+
+function roundOnePool(persona) {
+  const bucket = pickLengthBucket(persona);
+  return [...fallbackTexts.ROUND_1_ANSWER[bucket], ...fallbackTexts.ROUND_1_ANSWER.medium];
+}
+
+function pickLengthBucket(persona) {
+  const style = persona?.speakingStyle ?? "";
+  const r = Math.random();
+  if (style.includes("短")) {
+    if (r < 0.4) return "short";
+    if (r < 0.9) return "medium";
+    return "long";
+  }
+  if (r < 0.2) return "short";
+  if (r < 0.85) return "medium";
+  return "long";
+}
+
+function contextualSample(templates, conversation) {
+  if (!conversation?.length) {
+    return sample(templates);
+  }
+  const recentText = conversation.map((message) => message.text).join("");
+  const matched = templates.filter((template) => {
+    return CONTEXT_HINTS.some((hint) => recentText.includes(hint) && template.includes(hint));
+  });
+  return matched.length ? sample(matched) : sample(templates);
+}
+
+function pickAccusationByPersona(persona) {
+  const style = persona?.reactionStyle ?? "";
+  const templates = fallbackTexts.ACCUSATION;
+  const weights = templates.map((template) => {
+    let weight = 1;
+    if (style.includes("茶化") && charLength(template) <= 10) {
+      weight *= 2.5;
+    }
+    if (style.includes("否定") && template.includes("違う")) {
+      weight *= 2;
+    }
+    if (style.includes("困") && /なんで|疑う|早く/.test(template)) {
+      weight *= 1.5;
+    }
+    return weight;
+  });
+  return weightedSample(templates, weights);
+}
+
+function weightedSample(items, weights) {
+  const total = weights.reduce((sum, weight) => sum + weight, 0);
+  let random = Math.random() * total;
+  for (let index = 0; index < items.length; index += 1) {
+    random -= weights[index];
+    if (random <= 0) {
+      return items[index];
+    }
+  }
+  return items[items.length - 1];
 }
 
 function compactReplyFragment(text) {
