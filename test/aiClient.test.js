@@ -181,10 +181,11 @@ test("AIだと疑われた時の返しは固定文にしない", async () => {
   const second = await generateAIMessage(input);
 
   assert.equal(first.text, "まあ怪しく見えたなら分かる");
-  assert.equal(second.text, "んー、普通に返しただけだけど");
+  assert.equal(second.text, "いや普通に人だけど？");
   assert.notEqual(first.text, second.text);
   assert.ok(Array.from(first.text).length <= 30);
   assert.ok(Array.from(second.text).length <= 30);
+  assert.match(second.text, /人/);
   assert.doesNotMatch(first.text, /AI/);
   assert.doesNotMatch(second.text, /AI/);
 });

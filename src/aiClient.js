@@ -109,7 +109,8 @@ const fallbackTexts = {
     "え、そこ疑う？ちょっと早くない",
     "そう見えたならごめんだけど",
     "それだけで決められると困るな",
-    "んー、普通に返しただけだけど"
+    "んー、普通に返しただけだけど",
+    "いや普通に人だけど？"
   ]
 };
 
@@ -233,7 +234,7 @@ function buildOpenAIInstructions(input) {
       "replyToHintsがあれば、その中の1つをtextに自然に含める。",
       "replyToKindがquestionなら、まず質問に答えてから少しだけ情報を足す。",
       "replyToKindがtypoまたはnoiseなら、意味を深読みせず打ち間違いとして軽く反応する。",
-      "replyToKindがaccusationなら、否定だけでなく軽く受け止めるか受け流す。AIや判定という語は使わない。",
+      "replyToKindがaccusationなら、否定だけでなく軽く受け止めるか受け流す。「普通に人だけど？」のような短い否定も使ってよい。AIや判定という語は使わない。",
       "相手の感想には一言だけ反応してから自分の話を足す。",
       "短すぎる相槌は避ける。14〜28文字くらいを目安に、DUELでは少しだけ情報を足す。",
       "personaは1つだけ薄く反映する。全部を説明しない。",
@@ -393,7 +394,7 @@ function hasAIStylePattern(text) {
 }
 
 function tooShortForRoundOne(text, input) {
-  return roundOneActionType(input.actionType) && charLength(text) < ROUND_ONE_MIN_CHARS;
+  return roundOneActionType(input.actionType) && replyKind(input) !== "accusation" && charLength(text) < ROUND_ONE_MIN_CHARS;
 }
 
 function replyKind(input) {
