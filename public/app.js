@@ -182,7 +182,7 @@ function renderQueue() {
   app.innerHTML = `
     <div class="home-layout">
       <section class="intro-panel">
-        ${signalGrid(count)}
+        ${queuePulseHtml()}
         <div class="home-copy">
           <h2>人間プレイヤーを探しています</h2>
           <p>現在 ${Math.min(count, 3)} / 3 人。3人集まるとAIを追加してゲームが始まります。</p>
@@ -208,7 +208,7 @@ function renderDuelQueue() {
     app.innerHTML = `
       <div class="home-layout">
         <section class="intro-panel">
-          ${signalGrid(1)}
+          ${queuePulseHtml()}
           <div class="home-copy">
             <h2>判定役を待っています</h2>
             <p>人間プレイヤーが「AIを見破る」を選ぶと、1:1の試合が始まります。</p>
@@ -242,7 +242,7 @@ function renderDuelQueue() {
   app.innerHTML = `
     <div class="home-layout">
       <section class="intro-panel">
-        ${signalGrid(2)}
+        ${queuePulseHtml()}
         <div class="home-copy">
           <h2>相手を探しています</h2>
           <p>人間プレイヤーが見つからなければ、30秒後にAIと試合が始まります。</p>
@@ -564,25 +564,12 @@ function renderResult() {
   `;
 }
 
-function signalGrid(active = 1) {
+function queuePulseHtml() {
   return `
-    <div class="signal-grid" aria-hidden="true">
-      ${[0, 1, 2, 3]
-        .map((index) => {
-          const isAi = index === 3;
-          const opacity = index < active ? "1" : "0.36";
-          return `
-            <div class="signal-tile ${isAi ? "ai" : ""}" style="opacity:${opacity}">
-              <svg viewBox="0 0 48 48">
-                <rect x="8" y="10" width="32" height="26" rx="7" fill="${isAi ? "#ffffff" : "#111318"}" />
-                <circle cx="18" cy="23" r="3" fill="${isAi ? "#ff6b57" : "#00bff5"}" />
-                <circle cx="30" cy="23" r="3" fill="${isAi ? "#ff6b57" : "#00bff5"}" />
-                <path d="M17 31h14" stroke="${isAi ? "#111318" : "#ffffff"}" stroke-width="3" stroke-linecap="round" />
-              </svg>
-            </div>
-          `;
-        })
-        .join("")}
+    <div class="queue-pulse" aria-hidden="true">
+      <span></span>
+      <span></span>
+      <span></span>
     </div>
   `;
 }
