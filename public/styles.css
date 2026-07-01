@@ -42,6 +42,46 @@ body {
   color: var(--ink);
 }
 
+body::before,
+body::after {
+  content: "";
+  position: fixed;
+  left: 0;
+  width: 100%;
+  height: 50vh;
+  background: #1c2020;
+  pointer-events: none;
+  transition: transform 200ms ease-out;
+  z-index: 400;
+}
+
+body::before {
+  top: 0;
+  transform: translateY(-100%);
+}
+
+body::after {
+  bottom: 0;
+  transform: translateY(100%);
+}
+
+body.is-transitioning::before,
+body.is-transitioning::after {
+  transform: translateY(0);
+}
+
+body.is-transitioning.is-transition-opening::before {
+  transform: translateY(-100%);
+}
+
+body.is-transitioning.is-transition-opening::after {
+  transform: translateY(100%);
+}
+
+body.is-transitioning .app-shell {
+  pointer-events: none;
+}
+
 button,
 input,
 select,
@@ -1144,6 +1184,67 @@ body.home-view {
   display: none;
 }
 
+.loader {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: 60px;
+  height: 50px;
+  text-align: center;
+  font-size: 10px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  transition: opacity 200ms ease-out;
+  z-index: 500;
+}
+
+.loader > div {
+  float: left;
+  display: inline-block;
+  width: 8px;
+  height: 100%;
+  margin-left: 2px;
+  animation: loader-delay 800ms infinite ease-in-out;
+}
+
+.loader .bar1 {
+  background-color: #754fa0;
+}
+
+.loader .bar2 {
+  background-color: #09b7bf;
+  animation-delay: -700ms;
+}
+
+.loader .bar3 {
+  background-color: #90d36b;
+  animation-delay: -600ms;
+}
+
+.loader .bar4 {
+  background-color: #f2d40d;
+  animation-delay: -500ms;
+}
+
+.loader .bar5 {
+  background-color: #fcb12b;
+  animation-delay: -400ms;
+}
+
+.loader .bar6 {
+  background-color: #ed1b72;
+  animation-delay: -300ms;
+}
+
+body.is-transitioning .loader {
+  opacity: 1;
+}
+
+body.is-transitioning.is-transition-opening .loader {
+  opacity: 0;
+}
+
 /* Loading and waiting motion */
 .view > .intro-panel:has(> h2:only-child) {
   min-height: min(620px, calc(100dvh - 140px));
@@ -1251,6 +1352,18 @@ body.home-view {
   animation: duel-ready-target-pulse 1200ms ease-in-out infinite;
 }
 
+@keyframes loader-delay {
+  0%,
+  40%,
+  100% {
+    transform: scaleY(0.05);
+  }
+
+  20% {
+    transform: scaleY(1);
+  }
+}
+
 @keyframes loading-logo-pulse {
   0%,
   100% {
@@ -1323,8 +1436,15 @@ body.home-view {
   .queue-view .queue-meter::after,
   .queue-view .intro-panel:not(:has([data-countdown])):not(:has([data-action="copy-invite"])) .queue-meter span,
   .duel-role-panel:has(.primary:disabled) .duel-ready-list::after,
+  .loader > div,
   .wait-dot {
     animation: none;
+  }
+
+  body::before,
+  body::after,
+  .loader {
+    transition: none;
   }
 
   .queue-view .queue-meter::after {

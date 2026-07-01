@@ -11,6 +11,8 @@ const state = {
 const MESSAGE_LIMIT = 30;
 const TURN_SECONDS = 30;
 const DUEL_MATCH_SECONDS = 30;
+const TRANSITION_EDGE_MS = 200;
+const TRANSITION_LOADER_CYCLE_MS = 800;
 
 const app = document.querySelector("#app");
 const sessionPill = document.querySelector("#sessionPill");
@@ -18,6 +20,9 @@ const toast = document.querySelector("#toast");
 let chatLayoutFrame = 0;
 let fixedInputObserver = null;
 let observedFixedInputPanel = null;
+let currentViewKey = "";
+let hasRenderedView = false;
+let transitionQueue = Promise.resolve();
 
 init().catch(showError);
 window.addEventListener("resize", queueChatLayoutSync);
@@ -60,7 +65,7 @@ async function refresh(options = {}) {
     } else {
       state.room = null;
     }
-    render();
+    await renderWithTransition();
     updateCountdowns();
     queueChatLayoutSync();
   } catch (error) {
@@ -134,6 +139,62 @@ function scrollChatToLatest() {
   for (const chatLog of document.querySelectorAll("[data-chat-log]")) {
     chatLog.scrollTop = chatLog.scrollHeight;
   }
+}
+
+async function renderWithTransition() {
+  transitionQueue = transitionQueue
+    .catch(() => {})
+    .then(async () => {
+      const nextViewKey = viewKey();
+      const shouldTransition = hasRenderedView && nextViewKey !== currentViewKey;
+
+      if (!shouldTransition || shouldReduceMotion()) {
+        render();
+        currentViewKey = nextViewKey;
+        hasRenderedView = true;
+        return;
+      }
+
+      document.body.classList.add("is-transitioning");
+      document.body.classList.remove("is-transition-opening");
+      await delay(TRANSITION_EDGE_MS + TRANSITION_LOADER_CYCLE_MS);
+
+      render();
+      currentViewKey = nextViewKey;
+      hasRenderedView = true;
+      updateCountdowns();
+      queueChatLayoutSync();
+
+      document.body.classList.add("is-transition-opening");
+      await delay(TRANSITION_EDGE_MS);
+      document.body.classList.remove("is-transitioning", "is-transition-opening");
+    });
+
+  await transitionQueue;
+}
+
+function viewKey() {
+  if (!state.me) {
+    return "loading";
+  }
+  if (!state.room) {
+    if (state.me.duelQueue) {
+      return "queue:duel";
+    }
+    if (state.me.queuePosition) {
+      return "queue:match";
+    }
+    return "home";
+  }
+  return `room:${state.room.mode ?? "MATCH"}:${state.room.status}`;
+}
+
+function shouldReduceMotion() {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function render() {
