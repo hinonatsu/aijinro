@@ -15,7 +15,6 @@ const TRANSITION_EDGE_MS = 200;
 const TRANSITION_LOADER_CYCLE_MS = 800;
 
 const app = document.querySelector("#app");
-const sessionPill = document.querySelector("#sessionPill");
 const toast = document.querySelector("#toast");
 let chatLayoutFrame = 0;
 let fixedInputObserver = null;
@@ -59,7 +58,6 @@ async function refresh(options = {}) {
   const recoverSession = options.recoverSession ?? true;
   try {
     state.me = await api(`/api/me?token=${encodeURIComponent(state.token)}`);
-    sessionPill.textContent = state.me.displayName;
     if (state.me.activeRoomId) {
       state.room = await api(`/api/rooms/${state.me.activeRoomId}?token=${encodeURIComponent(state.token)}`);
     } else {

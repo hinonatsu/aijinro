@@ -143,7 +143,7 @@ body.game-view {
 
 .topbar {
   display: grid;
-  grid-template-columns: 40px 1fr auto;
+  grid-template-columns: 40px 1fr;
   align-items: center;
   gap: 12px;
   margin-bottom: 16px;
@@ -216,17 +216,6 @@ h2 {
   line-height: 1.25;
 }
 
-.session-pill {
-  min-width: 108px;
-  padding: 7px 10px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--panel);
-  color: var(--muted);
-  text-align: center;
-  font-size: 0.86rem;
-}
-
 .view {
   min-height: 680px;
 }
@@ -261,14 +250,6 @@ body.home-view {
 
 .home-view .brand-name-image {
   width: clamp(156px, 22vw, 252px);
-}
-
-.home-view .session-pill {
-  display: none;
-}
-
-.duel-view .session-pill {
-  display: none;
 }
 
 .home-view .view {
@@ -1674,11 +1655,6 @@ body.is-transitioning.is-transition-opening .loader {
     grid-template-columns: 46px 1fr;
   }
 
-  .session-pill {
-    grid-column: 1 / -1;
-    width: fit-content;
-  }
-
 }
 
 @media (max-width: 540px) {
@@ -1701,7 +1677,7 @@ body.is-transitioning.is-transition-opening .loader {
   }
 
   .topbar {
-    grid-template-columns: 34px minmax(0, 1fr) auto;
+    grid-template-columns: 34px minmax(0, 1fr);
     gap: 8px;
     margin-bottom: 8px;
   }
@@ -1726,17 +1702,6 @@ body.is-transitioning.is-transition-opening .loader {
   h2 {
     font-size: 1.08rem;
     margin-bottom: 8px;
-  }
-
-  .session-pill {
-    grid-column: auto;
-    min-width: 0;
-    max-width: 86px;
-    padding: 6px 8px;
-    overflow: hidden;
-    white-space: nowrap;
-    text-overflow: ellipsis;
-    font-size: 0.82rem;
   }
 
   .view {
