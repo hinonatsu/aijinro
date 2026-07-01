@@ -241,6 +241,12 @@ function renderHome() {
 function renderQueue() {
   const count = state.me.queueCount ?? state.me.queuePosition ?? 1;
   app.innerHTML = `
+    ${queueDashboardHtml({
+      phase: "マッチング中",
+      mode: "3人対戦",
+      detail: `${Math.min(count, 3)} / 3 人`,
+      progress: Math.min(100, (count / 3) * 100)
+    })}
     <div class="home-layout">
       <section class="intro-panel">
         ${queuePulseHtml()}
@@ -267,6 +273,12 @@ function renderDuelQueue() {
   const queueResolveAt = state.me.duelQueue?.resolveAt;
   if (isPretender && !queueResolveAt) {
     app.innerHTML = `
+      ${queueDashboardHtml({
+        phase: "待機中",
+        mode: "AIのふり",
+        detail: "判定役待ち",
+        progress: 55
+      })}
       <div class="home-layout">
         <section class="intro-panel">
           ${queuePulseHtml()}
@@ -301,6 +313,13 @@ function renderDuelQueue() {
     ? "あなたは人間です。会話で相手にAIだと思わせたら勝ちです。"
     : "テーマに沿って3往復チャットした後、相手がAIか人間かを判定します。";
   app.innerHTML = `
+    ${queueDashboardHtml({
+      phase: queueTitle,
+      mode: sideTitle,
+      detail: "開始まで",
+      countdown: seconds,
+      progress
+    })}
     <div class="home-layout">
       <section class="intro-panel">
         ${queuePulseHtml()}
@@ -364,6 +383,13 @@ function renderRoleReveal() {
   const actionButtonsHtml = `<button class="primary" data-action="role-ack" ${ready ? "disabled" : ""}>${ready ? "ほかのプレイヤー待ち" : "確認して待つ"}</button>
         <button class="ghost" data-action="leave">退出</button>`;
   app.innerHTML = `
+    <div class="room-stack">
+      ${roomDashboardHtml(state.room, {
+        title: roleLabel(state.room.myParticipant.role),
+        detail: `確認済み ${readyText}`,
+        showParticipants: false,
+        showLeave: true
+      })}
     <section class="stage-panel">
       ${roleHeaderHtml}
       <p>${escapeHtml(roleText)}</p>
@@ -373,6 +399,7 @@ function renderRoleReveal() {
         ${actionButtonsHtml}
       </div>
     </section>
+    </div>
   `;
 }
 
@@ -395,6 +422,13 @@ function renderDuelRoleReveal() {
     : "確認して待つ";
 
   app.innerHTML = `
+    <div class="room-stack">
+      ${roomDashboardHtml(state.room, {
+        title: duelRoleLabel(duelRole),
+        detail: statusTitle,
+        showParticipants: false,
+        showLeave: false
+      })}
     <section class="stage-panel duel-role-panel">
       <button class="ghost duel-leave-button duel-role-leave" data-action="leave">退出</button>
       <div class="duel-stepper" aria-label="進行">
@@ -417,6 +451,7 @@ function renderDuelRoleReveal() {
         <button class="primary" data-action="role-ack" ${ready ? "disabled" : ""}>${buttonLabel}</button>
       </div>
     </section>
+    </div>
   `;
 }
 
@@ -446,6 +481,13 @@ function renderGameShell(panelHtml) {
     return;
   }
   app.innerHTML = `
+    <div class="room-stack">
+      ${roomDashboardHtml(room, {
+        title: turnHeadline(room),
+        detail: turnDescription(room),
+        showParticipants: false,
+        showLeave: true
+      })}
     <div class="game-layout">
       <aside class="side-panel">
         <p class="phase-chip">${phaseLabel(room)}</p>
@@ -472,6 +514,7 @@ function renderGameShell(panelHtml) {
         ${panelHtml}
       </section>
     </div>
+    </div>
   `;
 }
 
@@ -480,6 +523,12 @@ function renderDuelGameShell(panelHtml) {
   const description = turnDescription(room);
   app.innerHTML = `
     <div class="duel-game-layout">
+      ${roomDashboardHtml(room, {
+        title: duelStageTitle(room),
+        detail: description,
+        showParticipants: true,
+        showLeave: true
+      })}
       <div class="duel-game-top">
         <div class="duel-round-status">
           <p class="phase-chip">${phaseLabel(room)}</p>
@@ -606,6 +655,8 @@ function renderResult() {
          ${room.votes.map((vote) => `<div class="participant"><span></span><span>${escapeHtml(voteLabel(vote))}</span><span class="badge">${vote.auto ? "自動" : "投票"}</span></div>`).join("")}
        </div>`;
   app.innerHTML = `
+    <div class="room-stack">
+      ${resultDashboardHtml(room, winner, ai, voteThreshold)}
     <section class="result-panel">
       <p class="phase-chip">結果発表</p>
       <h2>${winner}</h2>
@@ -622,7 +673,139 @@ function renderResult() {
         <button class="ghost" data-action="leave">トップへ戻る</button>
       </div>
     </section>
+    </div>
   `;
+}
+
+function queueDashboardHtml({ phase, mode, detail, countdown, progress }) {
+  const detailHtml =
+    countdown == null
+      ? escapeHtml(detail)
+      : `${escapeHtml(detail)} <span data-countdown>${escapeHtml(`${countdown}秒`)}</span>`;
+  return `
+    <section class="room-dashboard queue-dashboard" aria-label="待機情報">
+      <div class="dashboard-main">
+        <p class="phase-chip">${escapeHtml(phase)}</p>
+        <div class="dashboard-title">
+          <h2>${escapeHtml(mode)}</h2>
+          <p class="muted">${detailHtml}</p>
+        </div>
+      </div>
+      <div class="dashboard-meter" aria-hidden="true">
+        <span style="width:${Math.min(100, Math.max(0, progress)).toFixed(1)}%"></span>
+      </div>
+    </section>
+  `;
+}
+
+function roomDashboardHtml(room, options = {}) {
+  const roleText = isDuelRoom(room)
+    ? duelRoleLabel(room.myParticipant.duelRole)
+    : roleLabel(room.myParticipant.role);
+  const metrics = [
+    dashboardMetricHtml("フェーズ", phaseLabel(room), "wide"),
+    dashboardMetricHtml("残り時間", `${remainingSeconds(room.phaseEndsAt)}秒`, "timer"),
+    dashboardMetricHtml("役割", roleText),
+    dashboardMetricHtml("ターン", dashboardTurnLabel(room))
+  ];
+  if (room.knownAI) {
+    metrics.push(dashboardMetricHtml("判明AI", room.knownAI.displayName));
+  }
+
+  return `
+    <section class="room-dashboard" aria-label="試合情報">
+      <div class="dashboard-main">
+        <p class="phase-chip">${phaseLabel(room)}</p>
+        <div class="dashboard-title">
+          <h2>${escapeHtml(options.title ?? phaseLabel(room))}</h2>
+          ${options.detail ? `<p class="muted">${escapeHtml(options.detail)}</p>` : ""}
+        </div>
+      </div>
+      <div class="dashboard-meta">
+        ${metrics.join("")}
+      </div>
+      ${options.showParticipants ? `<div class="dashboard-participants">${dashboardParticipantsHtml(room)}</div>` : ""}
+      ${options.showLeave ? `<div class="dashboard-actions"><button class="ghost" data-action="leave">退出</button></div>` : ""}
+    </section>
+  `;
+}
+
+function resultDashboardHtml(room, winner, ai, voteThreshold) {
+  const resultMetrics = isDuelRoom(room)
+    ? [
+        dashboardMetricHtml("勝敗", room.result?.participantResult?.won ? "勝利" : "敗北"),
+        dashboardMetricHtml("役割", duelRoleLabel(room.myParticipant.duelRole)),
+        dashboardMetricHtml("判定", duelJudgementLabel(room.result?.duelJudgement?.judgement))
+      ]
+    : [
+        dashboardMetricHtml("勝利陣営", room.result?.winnerTeam === "HUMAN" ? "人間" : "AI"),
+        dashboardMetricHtml("AI", ai?.displayName ?? ""),
+        dashboardMetricHtml("AI票", `${room.result?.aiVotes ?? 0} / ${voteThreshold}`)
+      ];
+  return `
+    <section class="room-dashboard result-dashboard" aria-label="結果サマリー">
+      <div class="dashboard-main">
+        <p class="phase-chip">結果</p>
+        <div class="dashboard-title">
+          <h2>${escapeHtml(winner)}</h2>
+          <p class="muted">${isDuelRoom(room) ? "1:1判定の結果" : "投票結果のサマリー"}</p>
+        </div>
+      </div>
+      <div class="dashboard-meta">${resultMetrics.join("")}</div>
+      <div class="dashboard-participants">${dashboardParticipantsHtml(room)}</div>
+    </section>
+  `;
+}
+
+function dashboardMetricHtml(label, value, tone = "") {
+  const valueHtml =
+    tone === "timer"
+      ? `<span data-countdown>${escapeHtml(value ?? "-")}</span>`
+      : `<span>${escapeHtml(value ?? "-")}</span>`;
+  return `
+    <div class="dashboard-metric ${tone ? `is-${tone}` : ""}">
+      <strong>${escapeHtml(label)}</strong>
+      ${valueHtml}
+    </div>
+  `;
+}
+
+function dashboardTurnLabel(room) {
+  if (room.currentTurn) {
+    return participantLabelById(room.currentTurn.participantId, room.currentTurn.displayName);
+  }
+  if (room.status === "ROLE_REVEAL") {
+    return "確認中";
+  }
+  if (room.status === "RESULT" || room.status === "CLOSED") {
+    return "終了";
+  }
+  return "-";
+}
+
+function dashboardParticipantsHtml(room) {
+  return room.participants
+    .map((participant) => {
+      const label = participantLabel(participant);
+      const isMe = participant.id === room.myParticipant.id;
+      const isCurrent = participant.id === room.currentTurn?.participantId;
+      const badges = [
+        isMe ? "自分" : "",
+        isCurrent ? "発言中" : "",
+        participant.hasVoted ? "投票済" : ""
+      ]
+        .filter(Boolean)
+        .map((badge) => `<span class="dashboard-badge">${escapeHtml(badge)}</span>`)
+        .join("");
+      return `
+        <span class="dashboard-participant">
+          ${avatar(label)}
+          <span>${escapeHtml(label)}</span>
+          ${badges}
+        </span>
+      `;
+    })
+    .join("");
 }
 
 function queuePulseHtml() {

@@ -345,7 +345,8 @@ body.home-view {
 .input-panel,
 .result-panel,
 .rules-panel,
-.modal-panel {
+.modal-panel,
+.room-dashboard {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel);
@@ -464,7 +465,8 @@ body.home-view {
 .chat-panel,
 .input-panel,
 .result-panel,
-.rules-panel {
+.rules-panel,
+.room-dashboard {
   padding: 18px;
 }
 
@@ -516,6 +518,154 @@ body.home-view {
   background: var(--accent-soft);
   color: var(--accent);
   font-weight: 900;
+}
+
+.room-stack {
+  display: grid;
+  gap: 12px;
+  min-height: 0;
+}
+
+.room-dashboard {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.9fr) minmax(0, 1.6fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.queue-dashboard {
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 320px);
+  margin-bottom: 12px;
+}
+
+.dashboard-main {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.dashboard-title {
+  min-width: 0;
+}
+
+.dashboard-title h2,
+.dashboard-title p {
+  margin: 0;
+}
+
+.dashboard-title h2 {
+  overflow-wrap: anywhere;
+}
+
+.dashboard-title p {
+  margin-top: 3px;
+  line-height: 1.45;
+}
+
+.dashboard-meta {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(96px, 1fr));
+  gap: 8px;
+}
+
+.dashboard-metric {
+  min-height: 52px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 9px 10px;
+  background: var(--panel-soft);
+  overflow: hidden;
+}
+
+.dashboard-metric strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.dashboard-metric span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 900;
+}
+
+.dashboard-metric.is-timer {
+  border-color: var(--brand-blue-border);
+  background: var(--accent-soft);
+}
+
+.dashboard-metric.is-timer span {
+  color: var(--accent);
+}
+
+.dashboard-actions {
+  justify-self: end;
+}
+
+.dashboard-actions .ghost {
+  min-width: 72px;
+}
+
+.dashboard-participants {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-top: 2px;
+  scrollbar-gutter: stable;
+}
+
+.dashboard-participant {
+  flex: 0 0 auto;
+  min-height: 34px;
+  max-width: 220px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 4px 8px 4px 4px;
+  background: #fff;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--ink);
+  font-weight: 800;
+}
+
+.dashboard-participant > span:not(.avatar):not(.dashboard-badge) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-badge {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.dashboard-meter {
+  height: 8px;
+  border-radius: 999px;
+  background: #e8e8e8;
+  overflow: hidden;
+}
+
+.dashboard-meter span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), var(--ink));
+  transition: width 220ms linear;
 }
 
 .game-layout {
@@ -753,6 +903,14 @@ body.home-view {
   font-weight: 700;
 }
 
+.room-stack .game-layout > .side-panel > .phase-chip,
+.room-stack .game-layout > .side-panel > .meta-grid,
+.room-stack .game-layout > .side-panel > .role-title,
+.room-stack .game-layout > .side-panel > .action-row,
+.duel-game-layout > .duel-game-top {
+  display: none;
+}
+
 .phase-chip {
   display: inline-flex;
   align-items: center;
@@ -823,6 +981,16 @@ body.home-view {
 .game-view .game-layout,
 .game-view .duel-game-layout {
   height: 100%;
+  min-height: 0;
+}
+
+.game-view .room-stack {
+  height: 100%;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.game-view .room-stack > .game-layout {
   min-height: 0;
 }
 
@@ -1471,6 +1639,23 @@ body.is-transitioning.is-transition-opening .loader {
     grid-template-columns: 1fr;
   }
 
+  .room-dashboard,
+  .queue-dashboard {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-meta {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-actions {
+    justify-self: stretch;
+  }
+
+  .dashboard-actions .ghost {
+    width: 100%;
+  }
+
   .game-layout > .side-panel {
     position: static;
   }
@@ -1570,9 +1755,66 @@ body.is-transitioning.is-transition-opening .loader {
   .chat-panel,
   .input-panel,
   .result-panel,
-  .rules-panel {
+  .rules-panel,
+  .room-dashboard {
     padding: 12px;
     box-shadow: var(--shadow);
+  }
+
+  .room-stack {
+    gap: 10px;
+  }
+
+  .room-dashboard {
+    gap: 10px;
+  }
+
+  .dashboard-main {
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .dashboard-title h2 {
+    font-size: 1.02rem;
+  }
+
+  .dashboard-title p {
+    font-size: 0.88rem;
+  }
+
+  .dashboard-meta {
+    gap: 6px;
+  }
+
+  .dashboard-metric {
+    min-height: 0;
+    padding: 8px;
+  }
+
+  .dashboard-metric strong {
+    font-size: 0.7rem;
+  }
+
+  .dashboard-metric span {
+    font-size: 0.88rem;
+  }
+
+  .dashboard-participants {
+    gap: 6px;
+    padding-bottom: 2px;
+  }
+
+  .dashboard-participant {
+    max-width: 176px;
+    min-height: 32px;
+    gap: 6px;
+    padding-right: 7px;
+    font-size: 0.86rem;
+  }
+
+  .dashboard-badge {
+    padding: 2px 5px;
+    font-size: 0.68rem;
   }
 
   .intro-panel {
