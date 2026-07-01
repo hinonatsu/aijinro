@@ -58,7 +58,9 @@ const TURN_MS = 30_000;
 const VOTE_MS = 15_000;
 const DUEL_MATCH_MS = 30_000;
 const DUEL_AI_READY_MIN_MS = 1_000;
+const DUEL_AI_READY_FAST_MAX_MS = 10_000;
 const DUEL_AI_READY_MAX_MS = 20_000;
+const DUEL_AI_READY_FAST_RATE = 0.9;
 const DUEL_CHAT_EXCHANGES = 3;
 const MESSAGE_LIMIT = 30;
 
@@ -623,7 +625,7 @@ function scheduleDuelAIReady(room) {
     return;
   }
 
-  const delay = randomInt(DUEL_AI_READY_MIN_MS, DUEL_AI_READY_MAX_MS);
+  const delay = randomDuelAIReadyDelay();
   const timer = setTimeout(() => {
     store.timers.delete(timer);
     const currentRoom = store.rooms.get(room.id);
@@ -655,6 +657,13 @@ function confirmDuelAIReady(room) {
 
 function randomInt(min, max) {
   return min + Math.floor(Math.random() * (max - min + 1));
+}
+
+function randomDuelAIReadyDelay() {
+  if (Math.random() < DUEL_AI_READY_FAST_RATE) {
+    return randomInt(DUEL_AI_READY_MIN_MS, DUEL_AI_READY_FAST_MAX_MS);
+  }
+  return randomInt(DUEL_AI_READY_FAST_MAX_MS + 1, DUEL_AI_READY_MAX_MS);
 }
 
 function duelOpeningMessage(room) {
