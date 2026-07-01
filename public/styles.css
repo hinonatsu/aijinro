@@ -22,8 +22,8 @@
   --loader-cyan-2: #007c96;
   --loader-cyan-3: #00a6cf;
   --loader-cyan-4: #00bff5;
-  --loader-cyan-5: #6ee6fb;
-  --loader-cyan-6: #c8f7ff;
+  --loader-cyan-5: #c8f7ff;
+  --loader-accent: var(--brand-red);
   --shell-gutter: max(16px, calc((100vw - 1120px) / 2));
   --game-sidebar: 300px;
   --game-gap: 16px;
@@ -1235,12 +1235,12 @@ body.home-view {
 }
 
 .loader .bar5 {
-  background-color: var(--loader-cyan-5);
+  background-color: var(--loader-accent);
   animation-delay: -400ms;
 }
 
 .loader .bar6 {
-  background-color: var(--loader-cyan-6);
+  background-color: var(--loader-cyan-5);
   animation-delay: -300ms;
 }
 
