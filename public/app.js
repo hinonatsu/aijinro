@@ -8,7 +8,7 @@ const state = {
   showRules: false
 };
 
-const MESSAGE_LIMIT = 40;
+const MESSAGE_LIMIT = 30;
 const TURN_SECONDS = 30;
 const DUEL_MATCH_SECONDS = 30;
 

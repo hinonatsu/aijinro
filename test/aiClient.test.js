@@ -6,10 +6,12 @@ const originalFetch = globalThis.fetch;
 const originalApiKey = process.env.OPENAI_API_KEY;
 const originalModel = process.env.OPENAI_MODEL;
 const originalWarn = console.warn;
+const originalRandom = Math.random;
 
 test.afterEach(() => {
   globalThis.fetch = originalFetch;
   console.warn = originalWarn;
+  Math.random = originalRandom;
   restoreEnv("OPENAI_API_KEY", originalApiKey);
   restoreEnv("OPENAI_MODEL", originalModel);
 });
@@ -60,7 +62,7 @@ test("OpenAI APIが失敗したらモックAIに戻す", async () => {
   });
 
   assert.ok(output.text);
-  assert.ok(Array.from(output.text).length <= 40);
+  assert.ok(Array.from(output.text).length <= 30);
 });
 
 test("最終推理ではOpenAIの疑い先と理由を返す", async () => {
@@ -128,8 +130,8 @@ test("1:1判定チャットでは人間らしさ指示を送り、疑い先をnu
   assert.deepEqual(input.unansweredQuestions, []);
   assert.equal(output.targetParticipantId, null);
   assert.equal(output.text, "昼はパンだけ、かなり適当だったかもね");
-  assert.ok(Array.from(output.text).length >= 18);
-  assert.ok(Array.from(output.text).length <= 40);
+  assert.ok(Array.from(output.text).length >= 14);
+  assert.ok(Array.from(output.text).length <= 30);
 });
 
 test("モックAIも直前の相手発言に寄せて返す", async () => {
@@ -144,8 +146,8 @@ test("モックAIも直前の相手発言に寄せて返す", async () => {
 
   assert.equal(output.text, "昼はパンだけ、かなり適当だったかもね");
   assert.equal(output.targetParticipantId, undefined);
-  assert.ok(Array.from(output.text).length >= 18);
-  assert.ok(Array.from(output.text).length <= 40);
+  assert.ok(Array.from(output.text).length >= 14);
+  assert.ok(Array.from(output.text).length <= 30);
 });
 
 test("意味不明な直前発言には無理に解釈せず軽く反応する", async () => {
@@ -159,8 +161,29 @@ test("意味不明な直前発言には無理に解釈せず軽く反応する",
   });
 
   assert.equal(output.text, "え、今の打ち間違い？ちょっと笑ったんだけど");
-  assert.ok(Array.from(output.text).length >= 18);
-  assert.ok(Array.from(output.text).length <= 40);
+  assert.ok(Array.from(output.text).length >= 14);
+  assert.ok(Array.from(output.text).length <= 30);
+});
+
+test("AIだと疑われた時の返しは固定文にしない", async () => {
+  process.env.OPENAI_API_KEY = "";
+  const input = {
+    ...baseInput(),
+    actionType: "FREE_CHAT",
+    mode: "DUEL",
+    replyTo: { displayName: "みかん", text: "AIっぽくて怪しい" }
+  };
+
+  Math.random = () => 0;
+  const first = await generateAIMessage(input);
+  Math.random = () => 0.99;
+  const second = await generateAIMessage(input);
+
+  assert.notEqual(first.text, second.text);
+  assert.ok(Array.from(first.text).length <= 30);
+  assert.ok(Array.from(second.text).length <= 30);
+  assert.doesNotMatch(first.text, /AI/);
+  assert.doesNotMatch(second.text, /AI/);
 });
 
 function baseInput() {

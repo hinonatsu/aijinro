@@ -60,7 +60,7 @@ const DUEL_MATCH_MS = 30_000;
 const DUEL_AI_READY_MIN_MS = 1_000;
 const DUEL_AI_READY_MAX_MS = 20_000;
 const DUEL_CHAT_EXCHANGES = 3;
-const MESSAGE_LIMIT = 40;
+const MESSAGE_LIMIT = 30;
 
 const AI_CONTEXT_HINTS = [
   "今日",

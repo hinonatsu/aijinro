@@ -3,8 +3,8 @@ import { moderateMessage } from "./moderation.js";
 
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const DEFAULT_OPENAI_MODEL = "gpt-5.4-mini";
-const MESSAGE_LIMIT = 40;
-const ROUND_ONE_MIN_CHARS = 18;
+const MESSAGE_LIMIT = 30;
+const ROUND_ONE_MIN_CHARS = 14;
 
 const AI_STYLE_PATTERNS = [
   /AI|bot|システム|プログラム|モデル/i,
@@ -103,7 +103,14 @@ const fallbackTexts = {
   ],
   DIRECTED_QUESTION: ["今日なんか慌てたことあった？", "それもう少し聞いていい？", "昼なに食べたか覚えてる？"],
   DIRECTED_ANSWER: ["あんま覚えてないけど普通", "そこはちょっと曖昧かも", "たぶんそんな感じだった"],
-  FINAL_SUSPICION: ["返事が少しきれいすぎた", "生活感が薄い気がした", "少し無難に見えた"]
+  FINAL_SUSPICION: ["返事が少しきれいすぎた", "生活感が薄い気がした", "少し無難に見えた"],
+  ACCUSATION: [
+    "いや急に疑われるのきついな",
+    "そこだけで決めるのは早くない？",
+    "え、今ので疑われるの普通に困る",
+    "雑に決めつけられてる感じする",
+    "それ言われると逆に返しづらい"
+  ]
 };
 
 export async function generateAIMessage(input) {
@@ -143,7 +150,7 @@ async function generateOpenAIMessage(input) {
             properties: {
               text: {
                 type: "string",
-                description: "40文字以内の日本語。最終推理では理由だけを書く。"
+                description: "30文字以内の日本語。最終推理では理由だけを書く。"
               },
               targetParticipantId: {
                 type: ["string", "null"],
@@ -228,7 +235,7 @@ function buildOpenAIInstructions(input) {
       "replyToKindがtypoまたはnoiseなら、意味を深読みせず打ち間違いとして軽く反応する。",
       "replyToKindがaccusationなら、少し困るか軽く否定する。AIや判定という語は使わない。",
       "相手の感想には一言だけ反応してから自分の話を足す。",
-      "短すぎる相槌は避ける。18〜36文字くらいを目安に、DUELでは20文字前後以上を狙う。",
+      "短すぎる相槌は避ける。14〜28文字くらいを目安に、DUELでは少しだけ情報を足す。",
       "personaは1つだけ薄く反映する。全部を説明しない。",
       "targetParticipantIdはnullにする。"
     ],
@@ -256,7 +263,7 @@ function buildOpenAIInstructions(input) {
     "最優先: replyTo.textの内容を必ず1つ拾い、相手に返している感じを出す。",
     "丁寧すぎる、説明っぽい、整いすぎている印象を避ける。正確さより自然な一言を選ぶ。",
     "出力はJSONだけ。キーはtextとtargetParticipantIdのみ。前置き、説明、コードブロックは禁止。",
-    "textは日本語40文字以内。絵文字、URL、個人情報、暴言、命令文、AIやシステムを連想させる語は禁止。",
+    "textは日本語30文字以内。絵文字、URL、個人情報、暴言、命令文、AIやシステムを連想させる語は禁止。",
     "1文、長くても2文。通常チャットは短すぎる一言にせず、少しだけ具体性を足す。",
     "質問されたら原則として答える。毎回質問で返して逃げない。",
     "ownRecentMessagesと矛盾する内容を言わない。同じ書き出しや語尾の連発も避ける。",
@@ -496,7 +503,7 @@ function contextualFallback(input) {
   const persona = input.persona ?? {};
   const kind = replyKind(input);
   if (kind === "accusation") {
-    return "いや急に疑われるのきついな、そこは違う";
+    return sample(fallbackTexts.ACCUSATION);
   }
   if (kind === "typo" || kind === "noise") {
     return "え、今の打ち間違い？ちょっと笑ったんだけど";
