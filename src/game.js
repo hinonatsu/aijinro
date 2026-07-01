@@ -57,6 +57,8 @@ export const DuelRole = Object.freeze({
 const TURN_MS = 30_000;
 const VOTE_MS = 15_000;
 const DUEL_MATCH_MS = 30_000;
+const DUEL_AI_READY_MIN_MS = 2_500;
+const DUEL_AI_READY_MAX_MS = 8_000;
 const DUEL_CHAT_EXCHANGES = 3;
 const MESSAGE_LIMIT = 40;
 
@@ -345,9 +347,7 @@ export async function submitAction(guestToken, roomId, payload) {
       throw publicError("役職確認を完了してください。");
     }
     participant.roleReady = true;
-    if (humanParticipants(room).every((item) => item.roleReady)) {
-      startRound1(room);
-    }
+    startRound1IfRoleReady(room);
     emitChange();
     return { ok: true };
   }
@@ -535,7 +535,7 @@ function createRoomFromUsers(users, options = {}) {
           persona: createPersona(),
           connected: true,
           finalSuspectId: null,
-          roleReady: true,
+          roleReady: !isDuel,
           createdAt: Date.now()
         }
       ]
@@ -588,6 +588,7 @@ function createRoomFromUsers(users, options = {}) {
       : "3人が揃いました。AI参加者を追加して試合を開始します。"
   );
   store.rooms.set(room.id, room);
+  scheduleDuelAIReady(room);
   return room;
 }
 
@@ -598,6 +599,62 @@ function createDuelRoom(assignments, options = {}) {
     fillWithAI: Boolean(options.fillWithAI),
     duelRoleByUserId
   });
+}
+
+function startRound1IfRoleReady(room) {
+  if (room.status !== RoomStatus.ROLE_REVEAL) {
+    return;
+  }
+  if (roleReadyParticipants(room).every((participant) => participant.roleReady)) {
+    startRound1(room);
+  }
+}
+
+function roleReadyParticipants(room) {
+  return room.mode === RoomMode.DUEL ? room.participants : humanParticipants(room);
+}
+
+function scheduleDuelAIReady(room) {
+  if (room.mode !== RoomMode.DUEL) {
+    return;
+  }
+  const aiParticipant = room.participants.find((participant) => participant.isAI && !participant.roleReady);
+  if (!aiParticipant) {
+    return;
+  }
+
+  const delay = randomInt(DUEL_AI_READY_MIN_MS, DUEL_AI_READY_MAX_MS);
+  const timer = setTimeout(() => {
+    store.timers.delete(timer);
+    const currentRoom = store.rooms.get(room.id);
+    currentRoom?.timers.delete(timer);
+    if (currentRoom?.status !== RoomStatus.ROLE_REVEAL) {
+      return;
+    }
+    const currentAI = participantById(currentRoom, aiParticipant.id);
+    if (!currentAI || currentAI.roleReady) {
+      return;
+    }
+    currentAI.roleReady = true;
+    startRound1IfRoleReady(currentRoom);
+    emitChange();
+  }, delay);
+  registerRoomTimer(room, timer);
+}
+
+function confirmDuelAIReady(room) {
+  const aiParticipant = room.participants.find((participant) => participant.isAI);
+  if (!aiParticipant) {
+    return false;
+  }
+  aiParticipant.roleReady = true;
+  startRound1IfRoleReady(room);
+  emitChange();
+  return true;
+}
+
+function randomInt(min, max) {
+  return min + Math.floor(Math.random() * (max - min + 1));
 }
 
 function duelOpeningMessage(room) {
@@ -1415,10 +1472,7 @@ function sanitizeRoomForParticipant(room, viewer) {
       roleReady: viewer.roleReady,
       hasVoted: room.mode !== RoomMode.DUEL && room.votes.some((vote) => vote.voterParticipantId === viewer.id)
     },
-    readiness: {
-      humanCount: humanParticipants(room).length,
-      roleReadyCount: humanParticipants(room).filter((participant) => participant.roleReady).length
-    },
+    readiness: readinessForParticipant(room, viewer),
     knownAI: knownAI
       ? {
           participantId: knownAI.id,
@@ -1788,6 +1842,19 @@ function registerRoomTimer(room, timer) {
   store.timers.add(timer);
 }
 
+function readinessForParticipant(room, viewer) {
+  const humans = humanParticipants(room);
+  const readyParticipants = roleReadyParticipants(room);
+  const opponent = room.mode === RoomMode.DUEL ? room.participants.find((participant) => participant.id !== viewer.id) : null;
+  return {
+    humanCount: humans.length,
+    roleReadyCount: humans.filter((participant) => participant.roleReady).length,
+    totalCount: readyParticipants.length,
+    totalReadyCount: readyParticipants.filter((participant) => participant.roleReady).length,
+    opponentReady: opponent ? opponent.roleReady : null
+  };
+}
+
 function presentStats(stats) {
   const winRate = stats.gamesPlayed ? Math.round((stats.gamesWon / stats.gamesPlayed) * 100) : 0;
   const citizenWinRate = stats.citizenGames ? Math.round((stats.citizenWins / stats.citizenGames) * 100) : 0;
@@ -1813,7 +1880,10 @@ export const testOnly = {
   finalizeCurrentTurn,
   finalizeVotes,
   resolveDuelQueue,
+  confirmDuelAIReady,
   DUEL_MATCH_MS,
+  DUEL_AI_READY_MIN_MS,
+  DUEL_AI_READY_MAX_MS,
   startRound1,
   sanitizeRoomForParticipant
 };

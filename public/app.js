@@ -317,9 +317,7 @@ function renderRoleReveal() {
 
 function renderDuelRoleReveal() {
   const ready = state.room.myParticipant.roleReady;
-  const readyCount = state.room.readiness?.roleReadyCount ?? (ready ? 1 : 0);
-  const humanCount = state.room.readiness?.humanCount ?? 2;
-  const opponentReady = humanCount <= 1 || readyCount >= humanCount || (!ready && readyCount > 0);
+  const opponentReady = Boolean(state.room.readiness?.opponentReady);
   const duelRole = state.room.myParticipant.duelRole;
   const statusTitle = ready
     ? opponentReady
